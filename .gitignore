@@ -1,0 +1,10 @@
+node_modules/
+dist/
+storage/
+
+.mergeboard-*.log
+.mergeboard-*.pid
+npm-debug.log*
+.env
+.env.*
+!.env.example
