@@ -36,7 +36,6 @@ import {
   Image as ImageIcon,
   Layers3,
   Languages,
-  LocateFixed,
   Menu,
   Merge,
   Maximize2,
@@ -507,10 +506,7 @@ const ImageNode = memo(({ id, data, selected }) => {
               {selected && <label className="replace-image nodrag" title={t('Replace image', 'Đổi ảnh')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
             </div>
           ) : (
-            <label className="image-drop nodrag">
-              <Upload size={20} /><strong>{uploading ? t('Saving…', 'Đang sao lưu...') : t('Upload image', 'Tải ảnh lên')}</strong><span>PNG, JPG, WEBP · {t('up to 25 MB', 'tối đa 25 MB')}</span>
-              <input type="file" accept="image/*" onChange={onFile} disabled={uploading} />
-            </label>
+            <div className="empty-image-surface"><label className="replace-image compact-upload-button nodrag" title={uploading ? t('Saving…', 'Đang sao lưu...') : t('Upload image', 'Tải ảnh lên')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label></div>
           )}
         </div>
         <span className="node-external-meta file-name">{data.fileName || t('No image', 'Chưa có ảnh')}</span>
@@ -544,7 +540,6 @@ const MixerNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
   const { focusNode } = useContext(NodeActionsContext);
   const resources = data.resources || [];
-  const inputTitles = data.inputTitles || [];
   const viewMode = data.viewMode || 'expanded';
   const imageCount = resources.filter((resource) => resource.kind === 'image').length;
   const textResource = resources.find((resource) => resource.kind === 'text');
@@ -560,35 +555,19 @@ const MixerNode = memo(({ id, data, selected }) => {
           )}
           {resources.map((resource, index) => (
             <section className="resource-block" key={`${resource.sourceId}-${index}`}>
-              <div className="resource-meta">
-                <span className={`resource-kind ${resource.kind}`}>
-                  {resource.kind === 'image' ? <ImageIcon size={12} /> : <FileText size={12} />}
-                  {resource.title}
-                </span>
-                <CopyButton value={resource.value} kind={resource.kind} />
-              </div>
+              {resource.kind !== 'image' && <div className="resource-meta"><span className={`resource-kind ${resource.kind}`}>{resource.title}</span><CopyButton value={resource.value} kind={resource.kind} /></div>}
               {resource.kind === 'image'
-                ? <img className="mixer-image" src={resource.value} alt={resource.title} draggable="false" />
-                : <p className="mixer-text">{resource.value || <em>{t('Empty content', 'Nội dung trống')}</em>}</p>}
+                ? <div className="mixer-image-wrap"><img className="mixer-image" src={resource.value} alt={resource.title} draggable="false" /><button className={`mixer-image-title-link nodrag ${(resource.title || '').length > 25 ? 'is-long' : ''}`} style={{ color: resource.sourceColor || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(resource.sourceId); }} aria-label={t(`Go to ${resource.title}`, `Đi tới ${resource.title}`)} title={resource.title}><span>{resource.title || t('Untitled Image', 'Ảnh chưa đặt tên')}</span></button><div className="mixer-image-copy"><CopyButton value={resource.value} kind="image" /></div></div>
+                : resource.segments?.length
+                  ? <div className="mixer-text mixer-text-group">{resource.segments.map((segment, segmentIndex) => <section className={`mixer-text-segment tone-${segmentIndex % 2 ? 'b' : 'a'}`} key={segment.sourceId}><div className="mixer-segment-source"><button className="mixer-segment-title-link nodrag" style={{ color: segment.color || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(segment.sourceId); }} aria-label={t(`Go to ${segment.title || 'text node'}`, `Đi tới ${segment.title || 'node text'}`)} title={t('Go to source node', 'Đi tới node nguồn')}>{segment.title || t('Untitled Text', 'Text chưa đặt tên')}</button></div><p>{segment.value}</p></section>)}</div>
+                  : <p className="mixer-text">{resource.value || <em>{t('Empty content', 'Nội dung trống')}</em>}</p>}
             </section>
           ))}
         </div>
         <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
       </div>
-      <div className={`mixer-footer-note ${selected ? 'is-inside' : 'is-outside'}`}>
+      <div className="mixer-footer-note is-outside">
         <span>{imageCount} {t('images', 'ảnh')}</span><span>{textResource ? `${textResource.count} text · ${t('merged', 'đã gộp')}` : '0 text'}</span>
-      </div>
-      <div className={`mixer-input-reveal ${selected ? 'is-open' : ''}`}>
-        <section className="example-inputs mixer-input-list">
-          <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE · {inputTitles.length}</div>
-          {inputTitles.length ? inputTitles.map((item) => (
-            <div className={`example-title-row ${item.kind}`} key={item.id}>
-              {item.kind === 'example' ? <BookOpenCheck size={13} /> : item.kind === 'image' ? <ImageIcon size={13} /> : <FileText size={13} />}
-              <span>{item.title || t('Untitled node', 'Node chưa đặt tên')}</span>
-              <button className="example-locate nodrag" onClick={(event) => { event.stopPropagation(); focusNode(item.id); }} aria-label={t(`Go to ${item.title || 'input node'}`, `Đi tới ${item.title || 'node input'}`)} title={t('Go to input node', 'Đi tới node input')}><LocateFixed size={13} /></button>
-            </div>
-          )) : <div className="example-empty">{t('No Text or Image input yet.', 'Chưa có Text hoặc Image đầu vào.')}</div>}
-        </section>
       </div>
     </NodeShell>
   );
@@ -619,13 +598,10 @@ const ExampleNode = memo(({ id, data, selected }) => {
         {data.image ? (
           <div className="image-preview example-preview">
             <img src={data.image} alt={data.title || t('Example image', 'Ảnh example')} draggable="false" />
-            <label className="replace-image nodrag" title={t('Replace example image', 'Đổi ảnh example')}><Upload size={14} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>
+            {selected && <label className="replace-image compact-upload-button nodrag" title={t('Replace example image', 'Đổi ảnh example')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
           </div>
         ) : (
-          <label className="image-drop nodrag">
-            <Upload size={20} /><strong>{uploading ? t('Saving…', 'Đang sao lưu...') : t('Upload example image', 'Tải ảnh example lên')}</strong><span>PNG, JPG, WEBP · {t('up to 25 MB', 'tối đa 25 MB')}</span>
-            <input type="file" accept="image/*" onChange={onFile} disabled={uploading} />
-          </label>
+          <div className="empty-image-surface"><label className="replace-image compact-upload-button nodrag" title={uploading ? t('Saving…', 'Đang sao lưu...') : t('Upload example image', 'Tải ảnh example lên')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label></div>
         )}
         <div className="mixer-footer-note example-resource-count"><span>{inputImageCount} {t('images', 'ảnh')}</span><span>{inputTextCount} text</span></div>
         <section className="example-inputs">
@@ -633,8 +609,7 @@ const ExampleNode = memo(({ id, data, selected }) => {
           {inputTitles.length ? inputTitles.map((item) => (
             <div className={`example-title-row ${item.kind}`} key={item.id}>
               {item.kind === 'example' ? <BookOpenCheck size={13} /> : item.kind === 'image' ? <ImageIcon size={13} /> : <FileText size={13} />}
-              <span>{item.title || t('Untitled node', 'Node chưa đặt tên')}</span>
-              <button className="example-locate nodrag" onClick={(event) => { event.stopPropagation(); focusNode(item.id); }} aria-label={t(`Go to ${item.title || 'input node'}`, `Đi tới ${item.title || 'node input'}`)} title={t('Go to input node', 'Đi tới node input')}><LocateFixed size={13} /></button>
+              <button className="example-title-link nodrag" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(item.id); }} aria-label={t(`Go to ${item.title || 'input node'}`, `Đi tới ${item.title || 'node input'}`)} title={t('Go to input node', 'Đi tới node input')}>{item.title || t('Untitled node', 'Node chưa đặt tên')}</button>
             </div>
           )) : <div className="example-empty">{t('Connect Text, Image, or Mixer to the left port.', 'Cắm Text, Image hoặc Mixer vào cổng bên trái.')}</div>}
         </section>
@@ -1443,7 +1418,7 @@ function FlowCanvas() {
     }
   }, [activeProjectId, showToast, t]);
 
-  const addCanvasImage = useCallback(async (file) => {
+  const addCanvasImage = useCallback(async (file, clientPoint = null) => {
     try {
       if (!activeProjectId) throw new Error(t('No project selected', 'Chưa chọn project'));
       const dataUrl = await fileToDataUrl(file);
@@ -1454,7 +1429,7 @@ function FlowCanvas() {
       const scale = Math.min(1, 420 / imageSize.width, 340 / imageSize.height);
       const width = Math.max(80, Math.round(imageSize.width * scale));
       const height = Math.max(60, Math.round(imageSize.height * scale));
-      const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      const center = screenToFlowPosition(clientPoint || { x: window.innerWidth / 2, y: window.innerHeight / 2 });
       const id = `canvasImageNode-${Date.now()}`;
       setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), {
         id,
@@ -1468,6 +1443,35 @@ function FlowCanvas() {
       showToast(error.message || t('Could not paste the image onto the canvas', 'Không thể dán ảnh vào canvas'), 'error');
     }
   }, [activeProjectId, screenToFlowPosition, showToast, t]);
+
+  const onCanvasImageDragOver = useCallback((event) => {
+    const hasImage = [...(event.dataTransfer?.items || [])].some((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      || [...(event.dataTransfer?.files || [])].some((file) => file.type.startsWith('image/'))
+      || event.dataTransfer?.types?.includes('text/uri-list')
+      || event.dataTransfer?.types?.includes('text/html');
+    if (!hasImage) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  }, []);
+
+  const onCanvasImageDrop = useCallback(async (event) => {
+    if (event.target?.closest?.('.react-flow__node')) return;
+    let file = [...(event.dataTransfer?.files || [])].find((item) => item.type.startsWith('image/')) || null;
+    if (!file) {
+      const html = event.dataTransfer?.getData('text/html');
+      const source = html ? new DOMParser().parseFromString(html, 'text/html').querySelector('img')?.src : event.dataTransfer?.getData('text/uri-list')?.split(/\r?\n/).find((line) => line && !line.startsWith('#'));
+      if (source) {
+        try {
+          const blob = await (await fetch(source)).blob();
+          if (blob.type.startsWith('image/')) file = new File([blob], `dropped-image-${Date.now()}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type });
+        } catch { /* a remote image can be blocked by CORS */ }
+      }
+    }
+    if (!file) return;
+    event.preventDefault();
+    event.stopPropagation();
+    await addCanvasImage(file, { x: event.clientX, y: event.clientY });
+  }, [addCanvasImage]);
 
   useEffect(() => {
     const onPaste = async (event) => {
@@ -1948,16 +1952,16 @@ function FlowCanvas() {
         const source = nodeById.get(edge.source);
         if (!source) return [];
         if (source.type === 'textNode') {
-          return [{ sourceId: source.id, kind: 'text', title: source.data.title, value: source.data.content }];
+          return [{ sourceId: source.id, kind: 'text', title: source.data.title, value: source.data.content, sourceColor: source.data.color }];
         }
         if (source.type === 'imageNode') {
           return source.data.image
-            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image }]
+            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color }]
             : [];
         }
         if (source.type === 'exampleNode') {
           return source.data.image
-            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image }]
+            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color }]
             : [];
         }
         if (['mixerNode', 'joinNode'].includes(source.type)) return collectResources(source.id, nextVisited);
@@ -2007,6 +2011,7 @@ function FlowCanvas() {
         kind: 'text',
         title: texts.length === 1 ? texts[0].title : t(`${texts.length} text entries`, `${texts.length} nội dung text`),
         value: texts.map((resource) => resource.value.trim()).join('\n\n'),
+        segments: texts.map((resource) => ({ sourceId: resource.sourceId, title: resource.title, value: resource.value.trim(), color: resource.sourceColor })),
         count: texts.length,
       }] : [];
       return { ...node, data: { ...nodeData, resources: [...images, ...combinedText], resourceCount: unique.length, inputTitles } };
@@ -2132,6 +2137,8 @@ function FlowCanvas() {
           ref={canvasRef}
           onContextMenu={openCanvasMenu}
           onPointerDownCapture={rememberSelectionStart}
+          onDragOver={onCanvasImageDragOver}
+          onDrop={onCanvasImageDrop}
         >
           <div className="canvas-topbar">
             <div><span className="project-kicker">PROJECT</span><strong>{projects.find((project) => project.id === activeProjectId)?.name || t('Loading…', 'Đang tải...')}</strong></div>
