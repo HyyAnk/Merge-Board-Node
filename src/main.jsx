@@ -203,6 +203,14 @@ function sortInputTitles(items) {
   return [...items].sort((first, second) => (INPUT_KIND_PRIORITY[first.kind] ?? 99) - (INPUT_KIND_PRIORITY[second.kind] ?? 99));
 }
 
+function createGraphSnapshot(nodes, edges) {
+  const snapshot = {
+    nodes: nodes.map(({ selected: _selected, dragging: _dragging, measured: _measured, ...node }) => ({ ...node, selected: false, data: { ...(node.data || {}) } })),
+    edges: edges.map(({ selected: _selected, ...edge }) => ({ ...edge, selected: false, data: { ...(edge.data || {}) } })),
+  };
+  return { ...snapshot, signature: JSON.stringify(snapshot) };
+}
+
 const selectRenderedNodeLayout = (state) => Array.from(state.nodeLookup.values()).map((node) => ({
   id: node.id,
   x: node.internals.positionAbsolute.x,
@@ -376,6 +384,10 @@ const ImageNode = memo(({ id, data, selected }) => {
   const [dragOver, setDragOver] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [dimensions, setDimensions] = useState({ width: data.imageWidth || 0, height: data.imageHeight || 0 });
+  const [lightboxView, setLightboxView] = useState({ zoom: 1, x: 0, y: 0, panning: false });
+  const [lightboxFit, setLightboxFit] = useState({ width: 0, height: 0 });
+  const lightboxStageRef = useRef(null);
+  const lightboxDragRef = useRef(null);
   const viewMode = data.viewMode || 'expanded';
   const color = data.color || '#f59e0b';
   const onFile = async (event) => {
@@ -402,10 +414,78 @@ const ImageNode = memo(({ id, data, selected }) => {
   };
   useEffect(() => {
     if (!previewOpen) return undefined;
+    setLightboxView({ zoom: 1, x: 0, y: 0, panning: false });
     const onKeyDown = (event) => { if (event.key === 'Escape') setPreviewOpen(false); };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [previewOpen]);
+  useLayoutEffect(() => {
+    const stage = lightboxStageRef.current;
+    if (!previewOpen || !stage || !dimensions.width || !dimensions.height) return undefined;
+    const updateFit = () => {
+      const viewportWidth = Math.max(1, stage.clientWidth - 32);
+      const viewportHeight = Math.max(1, stage.clientHeight - 32);
+      const scale = Math.min(1, viewportWidth / dimensions.width, viewportHeight / dimensions.height);
+      const next = { width: Math.floor(dimensions.width * scale), height: Math.floor(dimensions.height * scale) };
+      setLightboxFit((current) => current.width === next.width && current.height === next.height ? current : next);
+    };
+    updateFit();
+    const observer = new ResizeObserver(updateFit);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [dimensions.height, dimensions.width, previewOpen]);
+  const lightboxMetrics = useCallback((zoom = lightboxView.zoom) => {
+    const stage = lightboxStageRef.current;
+    if (!stage || !dimensions.width || !dimensions.height) return null;
+    const rect = stage.getBoundingClientRect();
+    const viewportWidth = Math.max(1, rect.width - 32);
+    const viewportHeight = Math.max(1, rect.height - 32);
+    const fitScale = Math.min(1, viewportWidth / dimensions.width, viewportHeight / dimensions.height);
+    const maxZoom = Math.min(12, Math.max(1, 1 / fitScale));
+    return {
+      rect,
+      fitScale,
+      maxZoom,
+      maxX: Math.max(0, (dimensions.width * fitScale * zoom - viewportWidth) / 2),
+      maxY: Math.max(0, (dimensions.height * fitScale * zoom - viewportHeight) / 2),
+    };
+  }, [dimensions.height, dimensions.width, lightboxView.zoom]);
+  const clampLightboxPan = useCallback((x, y, zoom) => {
+    const metrics = lightboxMetrics(zoom);
+    if (!metrics) return { x: 0, y: 0 };
+    return { x: Math.max(-metrics.maxX, Math.min(metrics.maxX, x)), y: Math.max(-metrics.maxY, Math.min(metrics.maxY, y)) };
+  }, [lightboxMetrics]);
+  const zoomLightbox = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const metrics = lightboxMetrics();
+    if (!metrics || metrics.maxZoom <= 1) return;
+    const nextZoom = Math.max(1, Math.min(metrics.maxZoom, lightboxView.zoom * Math.exp(-event.deltaY * 0.0018)));
+    if (Math.abs(nextZoom - lightboxView.zoom) < 0.001) return;
+    const pointerX = event.clientX - (metrics.rect.left + metrics.rect.width / 2);
+    const pointerY = event.clientY - (metrics.rect.top + metrics.rect.height / 2);
+    const ratio = nextZoom / lightboxView.zoom;
+    const nextPan = clampLightboxPan(pointerX - (pointerX - lightboxView.x) * ratio, pointerY - (pointerY - lightboxView.y) * ratio, nextZoom);
+    setLightboxView({ zoom: nextZoom, ...nextPan, panning: false });
+  }, [clampLightboxPan, lightboxMetrics, lightboxView]);
+  const beginLightboxPan = useCallback((event) => {
+    if (event.button !== 0 || lightboxView.zoom <= 1) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    lightboxDragRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, x: lightboxView.x, y: lightboxView.y };
+    setLightboxView((current) => ({ ...current, panning: true }));
+  }, [lightboxView]);
+  const moveLightboxPan = useCallback((event) => {
+    const drag = lightboxDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const nextPan = clampLightboxPan(drag.x + event.clientX - drag.clientX, drag.y + event.clientY - drag.clientY, lightboxView.zoom);
+    setLightboxView((current) => ({ ...current, ...nextPan, panning: true }));
+  }, [clampLightboxPan, lightboxView.zoom]);
+  const finishLightboxPan = useCallback((event) => {
+    if (lightboxDragRef.current?.pointerId !== event.pointerId) return;
+    lightboxDragRef.current = null;
+    setLightboxView((current) => ({ ...current, panning: false }));
+  }, []);
   return (
     <>
       <NodeShell
@@ -441,8 +521,17 @@ const ImageNode = memo(({ id, data, selected }) => {
         <div className="image-lightbox" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewOpen(false); }}>
           <section className="image-lightbox-panel" role="dialog" aria-modal="true" aria-label={t('Large image preview', 'Xem ảnh kích thước lớn')}>
             <header><span><ImageIcon size={16} /><strong>{data.fileName || data.title}</strong></span><button onClick={() => setPreviewOpen(false)} aria-label={t('Close', 'Đóng')}><X size={18} /></button></header>
-            <div className="image-lightbox-stage"><img src={data.image} alt={data.title || data.fileName} /></div>
-            <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px</span><button onClick={() => revealAsset(data.assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer', 'Mở asset trong Explorer')}</button></footer>
+            <div
+              ref={lightboxStageRef}
+              className={`image-lightbox-stage ${lightboxView.zoom > 1 ? 'is-zoomed' : ''} ${lightboxView.panning ? 'is-panning' : ''}`}
+              onWheel={zoomLightbox}
+              onPointerDown={beginLightboxPan}
+              onPointerMove={moveLightboxPan}
+              onPointerUp={finishLightboxPan}
+              onPointerCancel={finishLightboxPan}
+              onDoubleClick={() => setLightboxView({ zoom: 1, x: 0, y: 0, panning: false })}
+            ><img src={data.image} alt={data.title || data.fileName} draggable="false" style={{ width: lightboxFit.width || undefined, height: lightboxFit.height || undefined, maxWidth: lightboxFit.width ? 'none' : undefined, maxHeight: lightboxFit.height ? 'none' : undefined, transform: `translate(${lightboxView.x}px, ${lightboxView.y}px) scale(${lightboxView.zoom})` }} /></div>
+            <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px · {t('Zoom', 'Thu phóng')} {Math.round(lightboxView.zoom * 100)}%{lightboxView.zoom > 1 ? ` · ${t('drag to pan', 'kéo để xem')}` : ''}</span><button onClick={() => revealAsset(data.assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer', 'Mở asset trong Explorer')}</button></footer>
           </section>
         </div>,
         document.body,
@@ -1011,8 +1100,40 @@ function FlowCanvas() {
   const connectionStartRef = useRef(null);
   const connectionCompletedRef = useRef(false);
   const selectionPointerRef = useRef(null);
-  const { screenToFlowPosition, fitView, getNode, setCenter } = useReactFlow();
+  const historyRef = useRef({ past: [], future: [], current: null });
+  const historyProjectRef = useRef(null);
+  const historyTimerRef = useRef(null);
+  const historyApplyingRef = useRef(false);
+  const latestSnapshotRef = useRef(null);
+  const { screenToFlowPosition, fitView, getNode, setCenter, getViewport, setViewport } = useReactFlow();
   const renderedNodeLayout = useStore(selectRenderedNodeLayout, sameRenderedNodeLayout);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || toolMode !== 'section') return undefined;
+    const zoomSectionCanvas = (event) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const flowElement = canvas.querySelector('.react-flow');
+      const rect = (flowElement || canvas).getBoundingClientRect();
+      const viewport = getViewport();
+      const normalizedDelta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1);
+      const nextZoom = Math.max(0.05, Math.min(1.8, viewport.zoom * Math.exp(-normalizedDelta * 0.002)));
+      if (nextZoom === viewport.zoom) return;
+      const pointerX = event.clientX - rect.left;
+      const pointerY = event.clientY - rect.top;
+      const flowX = (pointerX - viewport.x) / viewport.zoom;
+      const flowY = (pointerY - viewport.y) / viewport.zoom;
+      setViewport({
+        x: pointerX - flowX * nextZoom,
+        y: pointerY - flowY * nextZoom,
+        zoom: nextZoom,
+      }, { duration: 0 });
+    };
+    canvas.addEventListener('wheel', zoomSectionCanvas, { passive: false, capture: true });
+    return () => canvas.removeEventListener('wheel', zoomSectionCanvas, { capture: true });
+  }, [getViewport, setViewport, toolMode]);
   const renderedNodeLayoutById = useMemo(() => new Map(renderedNodeLayout.map((node) => [node.id, node])), [renderedNodeLayout]);
 
   const rememberSelectionStart = useCallback((event) => {
@@ -1063,6 +1184,79 @@ function FlowCanvas() {
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type, key: Date.now() });
   }, []);
+
+  useEffect(() => {
+    if (!storageReady || !activeProjectId) return undefined;
+    const snapshot = createGraphSnapshot(nodes, edges);
+    latestSnapshotRef.current = snapshot;
+    if (historyProjectRef.current !== activeProjectId) {
+      clearTimeout(historyTimerRef.current);
+      historyProjectRef.current = activeProjectId;
+      historyRef.current = { past: [], future: [], current: snapshot };
+      historyApplyingRef.current = false;
+      return undefined;
+    }
+    if (historyApplyingRef.current) {
+      clearTimeout(historyTimerRef.current);
+      historyRef.current.current = snapshot;
+      historyApplyingRef.current = false;
+      return undefined;
+    }
+    if (snapshot.signature === historyRef.current.current?.signature) return undefined;
+    clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = setTimeout(() => {
+      const next = latestSnapshotRef.current;
+      const history = historyRef.current;
+      if (!next || next.signature === history.current?.signature) return;
+      history.past.push(history.current);
+      if (history.past.length > 100) history.past.shift();
+      history.current = next;
+      history.future = [];
+    }, 260);
+    return () => clearTimeout(historyTimerRef.current);
+  }, [activeProjectId, edges, nodes, storageReady]);
+
+  const commitPendingHistory = useCallback(() => {
+    clearTimeout(historyTimerRef.current);
+    const next = latestSnapshotRef.current;
+    const history = historyRef.current;
+    if (!next || next.signature === history.current?.signature) return;
+    history.past.push(history.current);
+    if (history.past.length > 100) history.past.shift();
+    history.current = next;
+    history.future = [];
+  }, []);
+
+  const restoreHistorySnapshot = useCallback((snapshot) => {
+    if (!snapshot) return;
+    historyApplyingRef.current = true;
+    latestSnapshotRef.current = snapshot;
+    setNodes(snapshot.nodes.map((node) => ({ ...node, data: { ...(node.data || {}) } })));
+    setEdges(snapshot.edges.map((edge) => ({ ...edge, data: { ...(edge.data || {}) } })));
+    setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); setSectionDraft(null);
+  }, []);
+
+  const undoGraph = useCallback(() => {
+    commitPendingHistory();
+    const history = historyRef.current;
+    const previous = history.past.pop();
+    if (!previous) return showToast(t('Nothing to undo', 'Không còn thao tác để hoàn tác'), 'error');
+    history.future.push(history.current);
+    history.current = previous;
+    restoreHistorySnapshot(previous);
+    showToast(t('Undid the last action', 'Đã hoàn tác thao tác gần nhất'));
+  }, [commitPendingHistory, restoreHistorySnapshot, showToast, t]);
+
+  const redoGraph = useCallback(() => {
+    commitPendingHistory();
+    const history = historyRef.current;
+    const next = history.future.pop();
+    if (!next) return showToast(t('Nothing to redo', 'Không còn thao tác để làm lại'), 'error');
+    history.past.push(history.current);
+    history.current = next;
+    restoreHistorySnapshot(next);
+    showToast(t('Redid the last action', 'Đã làm lại thao tác gần nhất'));
+  }, [commitPendingHistory, restoreHistorySnapshot, showToast, t]);
 
   const updateProjects = useCallback((updater) => {
     setProjects((current) => {
@@ -1203,6 +1397,7 @@ function FlowCanvas() {
   useEffect(() => {
     localStorage.setItem(THEME_KEY, theme);
     document.documentElement.style.colorScheme = theme;
+    document.documentElement.dataset.theme = theme;
   }, [theme]);
 
   useEffect(() => {
@@ -1470,6 +1665,18 @@ function FlowCanvas() {
     const onKeyDown = (event) => {
       if (event.key === 'Escape') { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); setMovableJoinId(null); }
       if (event.target?.closest?.('input, textarea, [contenteditable="true"]')) return;
+      const modifier = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (modifier && key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redoGraph(); else undoGraph();
+        return;
+      }
+      if (modifier && key === 'y') {
+        event.preventDefault();
+        redoGraph();
+        return;
+      }
       if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'v') {
         event.preventDefault(); setToolMode('select'); setSectionDraft(null); return;
       }
@@ -1482,7 +1689,7 @@ function FlowCanvas() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [duplicateSelected]);
+  }, [duplicateSelected, redoGraph, undoGraph]);
 
   const openCanvasMenu = useCallback((event) => {
     event.preventDefault();

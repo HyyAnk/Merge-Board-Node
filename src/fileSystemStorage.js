@@ -271,7 +271,16 @@ export async function saveProject(project, nodes, edges) {
       clean.data.textFile = `texts/${file}`;
     }
     if (['imageNode', 'exampleNode', 'canvasImageNode'].includes(node.type)) {
-      if (node.data?.assetFile) referencedAssets.add(node.data.assetFile);
+      if (node.data?.assetFile) {
+        referencedAssets.add(node.data.assetFile);
+        try {
+          await assets.getFileHandle(node.data.assetFile);
+        } catch (error) {
+          if (error.name !== 'NotFoundError' || !node.data?.image) throw error;
+          const restoredAsset = await (await fetch(node.data.image)).blob();
+          await writeFile(assets, node.data.assetFile, restoredAsset);
+        }
+      }
       delete clean.data.image;
     }
     return clean;

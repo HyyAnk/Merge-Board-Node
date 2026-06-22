@@ -477,13 +477,15 @@ button { color: inherit; }
 .example-resource-count, .mixer-footer-note.is-inside { background: transparent; border: 0; }
 
 .image-lightbox { position: fixed; z-index: 10000; inset: 0; display: grid; place-items: center; padding: 4vh 4vw; background: rgba(10,9,13,.68); backdrop-filter: blur(10px); animation: lightbox-fade .18s ease both; }
-.image-lightbox-panel { width: min(66.666vw, 1120px); height: min(66.666vh, 760px); display: grid; grid-template-rows: 48px minmax(0,1fr) 52px; overflow: hidden; color: #312d37; background: #f5f4f6; border: 1px solid rgba(255,255,255,.3); border-radius: 18px; box-shadow: 0 28px 90px rgba(0,0,0,.48); animation: lightbox-panel-in .2s cubic-bezier(.2,.8,.2,1) both; }
+.image-lightbox-panel { width: min(66.666vw, 1120px); height: min(66.666vh, 760px); min-width: 0; display: grid; grid-template-rows: 48px minmax(0,1fr) 52px; overflow: hidden; color: #312d37; background: #f5f4f6; border: 1px solid rgba(255,255,255,.3); border-radius: 18px; box-shadow: 0 28px 90px rgba(0,0,0,.48); animation: lightbox-panel-in .2s cubic-bezier(.2,.8,.2,1) both; }
 .image-lightbox-panel > header, .image-lightbox-panel > footer { padding: 0 15px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: rgba(255,255,255,.9); }
 .image-lightbox-panel > header { border-bottom: 1px solid #dfdce2; }.image-lightbox-panel > footer { border-top: 1px solid #dfdce2; }
 .image-lightbox-panel > header span { min-width: 0; display: flex; align-items: center; gap: 8px; }.image-lightbox-panel > header strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .image-lightbox-panel > header button { width: 31px; height: 31px; display: grid; place-items: center; color: #746f79; background: transparent; border: 0; border-radius: 50%; cursor: pointer; }.image-lightbox-panel > header button:hover { color: #27232d; background: #ece9ee; }
-.image-lightbox-stage { min-height: 0; display: grid; place-items: center; padding: 16px; overflow: hidden; background: repeating-conic-gradient(#e4e2e6 0 25%, #eceaed 0 50%) 50% / 18px 18px; }
-.image-lightbox-stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; box-shadow: 0 8px 28px rgba(22,18,29,.24); }
+.image-lightbox-stage { min-width: 0; min-height: 0; display: grid; place-items: center; padding: 16px; overflow: hidden; background: #e7e5e9; }
+.image-lightbox-stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; box-shadow: 0 8px 28px rgba(22,18,29,.24); user-select: none; transform-origin: center; will-change: transform; transition: transform .09s ease-out; }
+.image-lightbox-stage.is-zoomed { cursor: grab; }.image-lightbox-stage.is-panning { cursor: grabbing; }
+.image-lightbox-stage.is-panning img { transition: none; }
 .image-lightbox-panel > footer > span { color: #817b86; font: 700 9px 'Manrope'; }
 .image-lightbox-panel > footer > button { height: 33px; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; color: white; background: #7462df; border: 0; border-radius: 9px; cursor: pointer; font-size: 9px; font-weight: 800; }.image-lightbox-panel > footer > button:hover { background: #6653ce; }
 @keyframes lightbox-fade { from { opacity: 0; } }
@@ -505,3 +507,10 @@ button { color: inherit; }
 .theme-dark .image-lightbox-panel > header, .theme-dark .image-lightbox-panel > footer { background: #29262e; border-color: #45404a; }
 .theme-dark .image-lightbox-panel > header button { color: #aaa4af; }.theme-dark .image-lightbox-panel > header button:hover { color: white; background: #393540; }
 .theme-dark .image-lightbox-stage { background: repeating-conic-gradient(#211f25 0 25%, #29272e 0 50%) 50% / 18px 18px; }
+html[data-theme="dark"] .image-lightbox { background: #0f0e12; backdrop-filter: none; }
+html[data-theme="dark"] .image-lightbox-panel { color: #e7e3eb; background: #1c1a20; border-color: #403b46; box-shadow: 0 28px 90px rgba(0,0,0,.72); }
+html[data-theme="dark"] .image-lightbox-panel > header,
+html[data-theme="dark"] .image-lightbox-panel > footer { background: #25222a; border-color: #403b46; }
+html[data-theme="dark"] .image-lightbox-panel > header button { color: #aaa4af; }
+html[data-theme="dark"] .image-lightbox-panel > header button:hover { color: white; background: #37333d; }
+html[data-theme="dark"] .image-lightbox-stage { background: #151419; }
