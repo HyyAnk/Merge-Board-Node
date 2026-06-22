@@ -313,6 +313,24 @@ export async function uploadAsset(project, file, preferredName = '') {
   return { url: makeObjectUrl(storedFile), assetFile, fileName: preferredName || file.name || assetFile };
 }
 
+export async function revealAsset(project, assetFile) {
+  if (!project?.folder || !assetFile) throw new Error('Asset file is not available');
+  if (typeof window.showOpenFilePicker !== 'function') throw new Error('This browser cannot open the asset in Explorer');
+  const directory = await getProjectDirectory(project.folder);
+  const assets = await directory.getDirectoryHandle('assets');
+  const fileHandle = await assets.getFileHandle(assetFile);
+  try {
+    await window.showOpenFilePicker({
+      id: 'mergeboard-reveal-asset',
+      startIn: fileHandle,
+      multiple: false,
+      types: [{ description: 'Image assets', accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'] } }],
+    });
+  } catch (error) {
+    if (error.name !== 'AbortError') throw error;
+  }
+}
+
 export async function renameProject(project, name, projects) {
   const nextName = cleanProjectName(name);
   const nextFolder = await uniqueFolderOnDisk(nextName, projects, project.id, project.folder);

@@ -1,5 +1,6 @@
 import React, { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -257,13 +258,23 @@ function PortStack({ ports = [], type, position, color, compact = false }) {
   });
 }
 
-function NodeHeader({ icon: Icon, eyebrow, title, nodeId, accent = 'violet', viewMode = 'expanded', color = NODE_COLORS[0] }) {
+function NodeHeader({ icon: Icon, title, nodeId, viewMode = 'expanded', color = NODE_COLORS[0] }) {
   const t = useTranslation();
-  const { updateNode, removeNode } = useContext(NodeActionsContext);
+  const { updateNode } = useContext(NodeActionsContext);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const actionsRef = useRef(null);
+  useEffect(() => {
+    if (!paletteOpen) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (!actionsRef.current?.contains(event.target)) setPaletteOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+  }, [paletteOpen]);
   return (
     <header className="node-header">
       <div className="node-floating-title nodrag">
+        <Icon size={14} strokeWidth={2.4} />
         <input
           className="node-title"
           value={title}
@@ -271,33 +282,22 @@ function NodeHeader({ icon: Icon, eyebrow, title, nodeId, accent = 'violet', vie
           onChange={(event) => updateNode(nodeId, { title: event.target.value })}
         />
       </div>
-      <span className={`node-icon ${accent}`}><Icon size={15} strokeWidth={2.4} /></span>
-      <div className="node-title-wrap">
-        <span className="node-eyebrow">{eyebrow}</span>
-      </div>
-      <div className="node-color-picker nodrag">
-        <button className="color-trigger" onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose node color', 'Chọn màu node')} title={t('Choose node color', 'Chọn màu node')}><Palette size={13} /></button>
-        {paletteOpen && (
-          <div className="node-color-popover" aria-label={t('Node color palette', 'Bảng màu node')}>
-            {NODE_COLORS.map((item) => <button key={item} className={item === color ? 'active' : ''} style={{ '--swatch': item }} onClick={() => { updateNode(nodeId, { color: item }); setPaletteOpen(false); }} aria-label={t(`Node color ${item}`, `Màu node ${item}`)} />)}
-          </div>
-        )}
-      </div>
-      <div className="view-mode-switch nodrag">
+      <div ref={actionsRef} className="node-actions nodrag" onMouseLeave={() => setPaletteOpen(false)}>
+        <div className="node-color-picker">
+          <button className="color-trigger" onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose node color', 'Chọn màu node')} title={t('Choose node color', 'Chọn màu node')}><Palette size={14} /></button>
+          {paletteOpen && (
+            <div className="node-color-popover" aria-label={t('Node color palette', 'Bảng màu node')}>
+              {NODE_COLORS.map((item) => <button key={item} className={item === color ? 'active' : ''} style={{ '--swatch': item }} onClick={() => { updateNode(nodeId, { color: item }); setPaletteOpen(false); }} aria-label={t(`Node color ${item}`, `Màu node ${item}`)} />)}
+            </div>
+          )}
+        </div>
         <button
-          className={viewMode === 'expanded' ? 'active' : ''}
-          onClick={() => updateNode(nodeId, { viewMode: 'expanded' })}
-          aria-label={t('Expanded view', 'Hiển thị đầy đủ')}
-          title={t('Expanded view', 'Hiển thị đầy đủ')}
-        ><Maximize2 size={12} /></button>
-        <button
-          className={viewMode === 'compact' ? 'active' : ''}
-          onClick={() => updateNode(nodeId, { viewMode: 'compact' })}
-          aria-label={t('Compact view', 'Hiển thị rút gọn')}
-          title={t('Compact view', 'Hiển thị rút gọn')}
-        ><Minimize2 size={12} /></button>
+          className="view-mode-toggle"
+          onClick={() => updateNode(nodeId, { viewMode: viewMode === 'expanded' ? 'compact' : 'expanded' })}
+          aria-label={viewMode === 'expanded' ? t('Compact view', 'Hiển thị rút gọn') : t('Expanded view', 'Hiển thị đầy đủ')}
+          title={viewMode === 'expanded' ? t('Compact view', 'Hiển thị rút gọn') : t('Expanded view', 'Hiển thị đầy đủ')}
+        >{viewMode === 'expanded' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button>
       </div>
-      <button className="icon-btn danger nodrag" onClick={() => removeNode(nodeId)} aria-label={t('Delete node', 'Xóa node')}><Trash2 size={14} /></button>
     </header>
   );
 }
@@ -308,7 +308,8 @@ function CopyButton({ value, kind = 'text' }) {
   return (
     <button
       className="copy-button nodrag"
-      onClick={() => copyResource(value, kind)}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => { event.stopPropagation(); copyResource(value, kind); }}
       aria-label={kind === 'image' ? t('Copy image', 'Copy ảnh') : t('Copy text', 'Copy text')}
       title={kind === 'image' ? t('Copy image', 'Copy ảnh') : t('Copy text', 'Copy text')}
     >
@@ -323,6 +324,7 @@ const TextNode = memo(({ id, data, selected }) => {
   const viewMode = data.viewMode || 'expanded';
   const color = data.color || '#3b82f6';
   const editorRef = useRef(null);
+  const [editing, setEditing] = useState(false);
 
   useLayoutEffect(() => {
     if (!editorRef.current) return;
@@ -332,24 +334,36 @@ const TextNode = memo(({ id, data, selected }) => {
     } else {
       editorRef.current.style.height = '';
     }
-  }, [data.content, viewMode]);
+  }, [data.content, viewMode, editing]);
+
+  const beginEditing = (event) => {
+    event.stopPropagation();
+    setEditing(true);
+    requestAnimationFrame(() => editorRef.current?.focus());
+  };
 
   return (
     <NodeShell selected={selected} color={color} className={`text-card mode-${viewMode}`}>
       <NodeHeader icon={Type} eyebrow="TEXT" title={data.title} nodeId={id} accent="blue" viewMode={viewMode} color={color} />
-      <div className="node-body">
-        <textarea
-          ref={editorRef}
-          className="text-editor nodrag nowheel"
-          value={data.content}
-          placeholder={t('Enter your content…', 'Nhập nội dung của bạn...')}
-          onChange={(event) => updateNode(id, { content: event.target.value })}
-        />
-        <div className="node-footer">
-          <span>{data.content.length} {t('characters', 'ký tự')}</span>
-          <CopyButton value={data.content} />
-        </div>
+      <div className="node-body text-node-content">
+        {editing ? (
+          <textarea
+            ref={editorRef}
+            className="text-editor is-editing nodrag nowheel"
+            value={data.content}
+            placeholder={t('Enter your content…', 'Nhập nội dung của bạn...')}
+            onChange={(event) => updateNode(id, { content: event.target.value })}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onBlur={() => setEditing(false)}
+          />
+        ) : (
+          <div ref={editorRef} className="text-editor text-display nowheel" onDoubleClick={beginEditing}>
+            {data.content || <span className="text-placeholder">{t('Double-click to enter content…', 'Double-click để nhập nội dung...')}</span>}
+          </div>
+        )}
       </div>
+      <span className="node-external-meta">{data.content.length} {t('characters', 'ký tự')}</span>
+      <div className="node-border-copy"><CopyButton value={data.content} /></div>
       <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
     </NodeShell>
   );
@@ -357,9 +371,11 @@ const TextNode = memo(({ id, data, selected }) => {
 
 const ImageNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
-  const { uploadImage, showToast } = useContext(NodeActionsContext);
+  const { uploadImage, showToast, revealAsset, updateNode } = useContext(NodeActionsContext);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [dimensions, setDimensions] = useState({ width: data.imageWidth || 0, height: data.imageHeight || 0 });
   const viewMode = data.viewMode || 'expanded';
   const color = data.color || '#f59e0b';
   const onFile = async (event) => {
@@ -384,36 +400,54 @@ const ImageNode = memo(({ id, data, selected }) => {
     try { await uploadImage(id, file); }
     finally { setUploading(false); }
   };
+  useEffect(() => {
+    if (!previewOpen) return undefined;
+    const onKeyDown = (event) => { if (event.key === 'Escape') setPreviewOpen(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [previewOpen]);
   return (
-    <NodeShell
-      selected={selected}
-      color={color}
-      className={`image-card mode-${viewMode} ${dragOver ? 'is-drag-over' : ''}`}
-      onDragEnter={(event) => { event.preventDefault(); event.stopPropagation(); setDragOver(true); }}
-      onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy'; }}
-      onDragLeave={(event) => { event.preventDefault(); if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(false); }}
-      onDrop={onDropImage}
-    >
-      <NodeHeader icon={ImageIcon} eyebrow="IMAGE" title={data.title} nodeId={id} accent="orange" viewMode={viewMode} color={color} />
-      <div className="node-body">
-        {data.image ? (
-          <div className="image-preview">
-            <img src={data.image} alt={data.title || t('Image resource', 'Tài nguyên ảnh')} />
-            <label className="replace-image nodrag" title={t('Replace image', 'Đổi ảnh')}><Upload size={14} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>
-          </div>
-        ) : (
-          <label className="image-drop nodrag">
-            <Upload size={20} /><strong>{uploading ? t('Saving…', 'Đang sao lưu...') : t('Upload image', 'Tải ảnh lên')}</strong><span>PNG, JPG, WEBP · {t('up to 25 MB', 'tối đa 25 MB')}</span>
-            <input type="file" accept="image/*" onChange={onFile} disabled={uploading} />
-          </label>
-        )}
-        <div className="node-footer">
-          <span className="file-name">{data.fileName || t('No image', 'Chưa có ảnh')}</span>
-          {data.image && <CopyButton value={data.image} kind="image" />}
+    <>
+      <NodeShell
+        selected={selected}
+        color={color}
+        className={`image-card mode-${viewMode} ${dragOver ? 'is-drag-over' : ''}`}
+        onDragEnter={(event) => { event.preventDefault(); event.stopPropagation(); setDragOver(true); }}
+        onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy'; }}
+        onDragLeave={(event) => { event.preventDefault(); if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(false); }}
+        onDrop={onDropImage}
+      >
+        <NodeHeader icon={ImageIcon} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
+        <div className="node-body image-node-content">
+          {data.image ? (
+            <div className="image-preview" onDoubleClick={(event) => { event.stopPropagation(); setPreviewOpen(true); }}>
+              <img src={data.image} alt={data.title || t('Image resource', 'Tài nguyên ảnh')} draggable="false" onLoad={(event) => { const next = { width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }; setDimensions(next); if (next.width !== data.imageWidth || next.height !== data.imageHeight) updateNode(id, { imageWidth: next.width, imageHeight: next.height }); }} />
+              {!!dimensions.width && <span className="image-dimensions">{dimensions.width} × {dimensions.height}</span>}
+              {selected && <div className="image-selection-gradient" />}
+              {selected && <label className="replace-image nodrag" title={t('Replace image', 'Đổi ảnh')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
+            </div>
+          ) : (
+            <label className="image-drop nodrag">
+              <Upload size={20} /><strong>{uploading ? t('Saving…', 'Đang sao lưu...') : t('Upload image', 'Tải ảnh lên')}</strong><span>PNG, JPG, WEBP · {t('up to 25 MB', 'tối đa 25 MB')}</span>
+              <input type="file" accept="image/*" onChange={onFile} disabled={uploading} />
+            </label>
+          )}
         </div>
-      </div>
-      <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
-    </NodeShell>
+        <span className="node-external-meta file-name">{data.fileName || t('No image', 'Chưa có ảnh')}</span>
+        {data.image && <div className="node-border-copy"><CopyButton value={data.image} kind="image" /></div>}
+        <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
+      </NodeShell>
+      {previewOpen && createPortal(
+        <div className="image-lightbox" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewOpen(false); }}>
+          <section className="image-lightbox-panel" role="dialog" aria-modal="true" aria-label={t('Large image preview', 'Xem ảnh kích thước lớn')}>
+            <header><span><ImageIcon size={16} /><strong>{data.fileName || data.title}</strong></span><button onClick={() => setPreviewOpen(false)} aria-label={t('Close', 'Đóng')}><X size={18} /></button></header>
+            <div className="image-lightbox-stage"><img src={data.image} alt={data.title || data.fileName} /></div>
+            <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px</span><button onClick={() => revealAsset(data.assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer', 'Mở asset trong Explorer')}</button></footer>
+          </section>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 });
 
@@ -428,47 +462,45 @@ const MixerNode = memo(({ id, data, selected }) => {
   const color = data.color || '#7c6cf2';
   return (
     <NodeShell selected={selected} color={color} className={`mixer-card mode-${viewMode}`}>
-      <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
-      <NodeHeader icon={Merge} eyebrow="SMART MIXER" title={data.title} nodeId={id} accent="violet" viewMode={viewMode} color={color} />
-      <div className="mixer-summary">
-        <span><Layers3 size={13} /> {data.resourceCount ?? resources.length} {t('resources', 'tài nguyên')}</span>
-        <span className="live-dot">LIVE</span>
-      </div>
-      <div className="mixer-content nodrag nowheel">
-        {!resources.length && (
-          <div className="empty-mixer"><Zap size={23} /><strong>{t('Connect resources', 'Kết nối tài nguyên')}</strong><span>{t('Drag a connector from Text or Image into the left port.', 'Kéo dây từ Text hoặc Image vào cổng bên trái.')}</span></div>
-        )}
-        {resources.map((resource, index) => (
-          <section className="resource-block" key={`${resource.sourceId}-${index}`}>
-            <div className="resource-meta">
-              <span className={`resource-kind ${resource.kind}`}>
-                {resource.kind === 'image' ? <ImageIcon size={12} /> : <FileText size={12} />}
-                {resource.title}
-              </span>
-              <CopyButton value={resource.value} kind={resource.kind} />
-            </div>
-            {resource.kind === 'image'
-              ? <img className="mixer-image" src={resource.value} alt={resource.title} />
-              : <p className="mixer-text">{resource.value || <em>{t('Empty content', 'Nội dung trống')}</em>}</p>}
-          </section>
-        ))}
-      </div>
-      {!!resources.length && (
-        <div className="mixer-footer-note">
-          <span>{imageCount} {t('images', 'ảnh')}</span><span>{textResource ? `${textResource.count} text · ${t('merged', 'đã gộp')}` : '0 text'}</span>
+      <div className="mixer-port-anchor">
+        <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
+        <NodeHeader icon={Merge} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
+        <div className="mixer-content nowheel">
+          {!resources.length && (
+            <div className="empty-mixer"><Zap size={23} /><strong>{t('Connect resources', 'Kết nối tài nguyên')}</strong><span>{t('Drag a connector from Text or Image into the left port.', 'Kéo dây từ Text hoặc Image vào cổng bên trái.')}</span></div>
+          )}
+          {resources.map((resource, index) => (
+            <section className="resource-block" key={`${resource.sourceId}-${index}`}>
+              <div className="resource-meta">
+                <span className={`resource-kind ${resource.kind}`}>
+                  {resource.kind === 'image' ? <ImageIcon size={12} /> : <FileText size={12} />}
+                  {resource.title}
+                </span>
+                <CopyButton value={resource.value} kind={resource.kind} />
+              </div>
+              {resource.kind === 'image'
+                ? <img className="mixer-image" src={resource.value} alt={resource.title} draggable="false" />
+                : <p className="mixer-text">{resource.value || <em>{t('Empty content', 'Nội dung trống')}</em>}</p>}
+            </section>
+          ))}
         </div>
-      )}
-      <section className="example-inputs mixer-input-list nodrag">
-        <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE · {inputTitles.length}</div>
-        {inputTitles.length ? inputTitles.map((item) => (
-          <div className={`example-title-row ${item.kind}`} key={item.id}>
-            {item.kind === 'example' ? <BookOpenCheck size={13} /> : item.kind === 'image' ? <ImageIcon size={13} /> : <FileText size={13} />}
-            <span>{item.title || t('Untitled node', 'Node chưa đặt tên')}</span>
-            <button className="example-locate nodrag" onClick={(event) => { event.stopPropagation(); focusNode(item.id); }} aria-label={t(`Go to ${item.title || 'input node'}`, `Đi tới ${item.title || 'node input'}`)} title={t('Go to input node', 'Đi tới node input')}><LocateFixed size={13} /></button>
-          </div>
-        )) : <div className="example-empty">{t('No Text or Image input yet.', 'Chưa có Text hoặc Image đầu vào.')}</div>}
-      </section>
-      <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
+        <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
+      </div>
+      <div className={`mixer-footer-note ${selected ? 'is-inside' : 'is-outside'}`}>
+        <span>{imageCount} {t('images', 'ảnh')}</span><span>{textResource ? `${textResource.count} text · ${t('merged', 'đã gộp')}` : '0 text'}</span>
+      </div>
+      <div className={`mixer-input-reveal ${selected ? 'is-open' : ''}`}>
+        <section className="example-inputs mixer-input-list">
+          <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE · {inputTitles.length}</div>
+          {inputTitles.length ? inputTitles.map((item) => (
+            <div className={`example-title-row ${item.kind}`} key={item.id}>
+              {item.kind === 'example' ? <BookOpenCheck size={13} /> : item.kind === 'image' ? <ImageIcon size={13} /> : <FileText size={13} />}
+              <span>{item.title || t('Untitled node', 'Node chưa đặt tên')}</span>
+              <button className="example-locate nodrag" onClick={(event) => { event.stopPropagation(); focusNode(item.id); }} aria-label={t(`Go to ${item.title || 'input node'}`, `Đi tới ${item.title || 'node input'}`)} title={t('Go to input node', 'Đi tới node input')}><LocateFixed size={13} /></button>
+            </div>
+          )) : <div className="example-empty">{t('No Text or Image input yet.', 'Chưa có Text hoặc Image đầu vào.')}</div>}
+        </section>
+      </div>
     </NodeShell>
   );
 });
@@ -479,6 +511,8 @@ const ExampleNode = memo(({ id, data, selected }) => {
   const [uploading, setUploading] = useState(false);
   const viewMode = data.viewMode || 'expanded';
   const inputTitles = data.inputTitles || [];
+  const inputImageCount = inputTitles.filter((item) => item.kind === 'image' || item.kind === 'example').length;
+  const inputTextCount = inputTitles.filter((item) => item.kind === 'text').length;
   const color = data.color || '#10b981';
   const onFile = async (event) => {
     const file = event.target.files?.[0];
@@ -491,13 +525,12 @@ const ExampleNode = memo(({ id, data, selected }) => {
   return (
     <NodeShell selected={selected} color={color} className={`example-card mode-${viewMode}`}>
       <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
-      <NodeHeader icon={BookOpenCheck} eyebrow="NODE EXAMPLE" title={data.title} nodeId={id} accent="green" viewMode={viewMode} color={color} />
-      <div className="example-content nodrag nowheel">
+      <NodeHeader icon={BookOpenCheck} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
+      <div className="example-content nowheel">
         {data.image ? (
           <div className="image-preview example-preview">
-            <img src={data.image} alt={data.title || t('Example image', 'Ảnh example')} />
+            <img src={data.image} alt={data.title || t('Example image', 'Ảnh example')} draggable="false" />
             <label className="replace-image nodrag" title={t('Replace example image', 'Đổi ảnh example')}><Upload size={14} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>
-            <CopyButton value={data.image} kind="image" />
           </div>
         ) : (
           <label className="image-drop nodrag">
@@ -505,6 +538,7 @@ const ExampleNode = memo(({ id, data, selected }) => {
             <input type="file" accept="image/*" onChange={onFile} disabled={uploading} />
           </label>
         )}
+        <div className="mixer-footer-note example-resource-count"><span>{inputImageCount} {t('images', 'ảnh')}</span><span>{inputTextCount} text</span></div>
         <section className="example-inputs">
           <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE · {inputTitles.length}</div>
           {inputTitles.length ? inputTitles.map((item) => (
@@ -516,6 +550,7 @@ const ExampleNode = memo(({ id, data, selected }) => {
           )) : <div className="example-empty">{t('Connect Text, Image, or Mixer to the left port.', 'Cắm Text, Image hoặc Mixer vào cổng bên trái.')}</div>}
         </section>
       </div>
+      {data.image && <div className="node-border-copy"><CopyButton value={data.image} kind="image" /></div>}
       <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
     </NodeShell>
   );
@@ -573,7 +608,7 @@ const SectionNode = memo(({ id, data, selected }) => {
       <div className="section-title-wrap nodrag" style={{ transform: `scale(${titleScale})` }}>
         <input value={data.title || 'Section'} onChange={(event) => updateNode(id, { title: event.target.value })} aria-label={t('Section name', 'Tên Section')} />
       </div>
-      {selected && (
+      {selected && !data?.relatedHighlighted && (
         <div className="section-actions nodrag">
           <button onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose Section color', 'Chọn màu Section')} title={t('Choose Section color', 'Chọn màu Section')}><Palette size={14} /></button>
           <button onClick={() => removeNode(id)} aria-label={t('Delete Section', 'Xóa Section')} title={t('Delete Section', 'Xóa Section')}><Trash2 size={14} /></button>
@@ -807,6 +842,7 @@ const BeamEdge = memo(({
   const color = isGradient ? targetColor : colorMode;
   const gradientId = `beam-gradient-${String(id).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   const edgeStroke = isGradient ? `url(#${gradientId})` : color;
+  const connectionHighlighted = selected || Boolean(data?.relatedHighlighted);
   const [edgePath, labelX, labelY] = useMemo(() => {
     const sourcePoint = { x: sourceX, y: sourceY };
     const targetPoint = { x: targetX, y: targetY };
@@ -831,9 +867,9 @@ const BeamEdge = memo(({
       <defs>
         {isGradient && <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}><stop offset="0%" stopColor={sourceColor} /><stop offset="100%" stopColor={targetColor} /></linearGradient>}
       </defs>
-      <BaseEdge id={id} path={edgePath} className="beam-edge" style={{ stroke: edgeStroke }} interactionWidth={32} />
-      {selected && <path d={edgePath} className="beam-selection-glow" style={{ stroke: edgeStroke }} />}
-      {selected && <path d={edgePath} className="beam-runner" />}
+      <BaseEdge id={id} path={edgePath} className={`beam-edge ${connectionHighlighted ? 'is-active' : ''}`} style={{ stroke: edgeStroke }} interactionWidth={32} />
+      {connectionHighlighted && <path d={edgePath} className="beam-selection-glow" style={{ stroke: edgeStroke }} />}
+      {connectionHighlighted && <path d={edgePath} className="beam-runner" />}
       {selected && (
         <EdgeLabelRenderer>
           <button
@@ -1202,6 +1238,15 @@ function FlowCanvas() {
       throw error;
     }
   }, [showToast, updateNode, activeProjectId, t]);
+
+  const revealAsset = useCallback(async (assetFile) => {
+    try {
+      const project = projectsRef.current.find((item) => item.id === activeProjectId);
+      await fileStorage.revealAsset(project, assetFile);
+    } catch (error) {
+      showToast(error.message || t('Could not open the asset in Explorer', 'Không thể mở asset trong Explorer'), 'error');
+    }
+  }, [activeProjectId, showToast, t]);
 
   const addCanvasImage = useCallback(async (file) => {
     try {
@@ -1764,6 +1809,7 @@ function FlowCanvas() {
   const displayEdges = useMemo(() => {
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const nodeTypeById = new Map(nodes.map((node) => [node.id, node.type]));
+    const selectedNodeIds = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
     const geometryFor = (nodeId) => {
       const node = nodeById.get(nodeId);
       if (!node) return null;
@@ -1841,6 +1887,7 @@ function FlowCanvas() {
           color: edge.data?.color || 'gradient',
           sourceColor: nodeById.get(edge.source)?.data?.color || NODE_COLORS[0],
           targetColor: nodeById.get(edge.target)?.data?.color || NODE_COLORS[0],
+          relatedHighlighted: selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target),
           cutPoint: edgeCutPoints[edge.id],
           routingObstacles,
           routedPoints,
@@ -1864,7 +1911,7 @@ function FlowCanvas() {
     '--connector-hover-visual-scale': connectorScale * 1.14,
   };
 
-  const actions = useMemo(() => ({ updateNode, removeNode, copyResource, showToast, uploadImage, focusNode }), [updateNode, removeNode, copyResource, showToast, uploadImage, focusNode]);
+  const actions = useMemo(() => ({ updateNode, removeNode, copyResource, showToast, uploadImage, revealAsset, focusNode }), [updateNode, removeNode, copyResource, showToast, uploadImage, revealAsset, focusNode]);
   const edgeActions = useMemo(() => ({ removeEdge }), [removeEdge]);
 
   return (
