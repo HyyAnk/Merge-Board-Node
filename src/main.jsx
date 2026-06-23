@@ -33,6 +33,7 @@ import {
   FolderOpen,
   FolderKanban,
   FolderPlus,
+  GripVertical,
   Image as ImageIcon,
   Layers3,
   Languages,
@@ -50,7 +51,6 @@ import {
   RotateCcw,
   Scissors,
   Settings,
-  Sparkles,
   Square,
   Sun,
   Trash2,
@@ -1089,15 +1089,28 @@ const BeamEdge = memo(({
 
 const edgeTypes = { beam: BeamEdge };
 
-function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRename, onDelete }) {
+function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRename, onDelete, onReorder }) {
   const t = useTranslation();
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
   const [deletePending, setDeletePending] = useState(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
   const managerRef = useRef(null);
   const active = projects.find((project) => project.id === activeProjectId);
+
+  const finishReorder = useCallback((targetId) => {
+    if (!draggingId || !targetId || draggingId === targetId) return;
+    const fromIndex = projects.findIndex((project) => project.id === draggingId);
+    const toIndex = projects.findIndex((project) => project.id === targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const next = [...projects];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    onReorder(next);
+  }, [draggingId, onReorder, projects]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1120,10 +1133,15 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
       </button>
       {open && (
         <div className="project-popover">
-          <div className="project-popover-title"><span>PROJECTS</span><span>{projects.length}</span></div>
           <div className="project-list">
             {projects.map((project) => (
-              <div className={`project-row ${project.id === activeProjectId ? 'active' : ''}`} key={project.id}>
+              <div
+                className={`project-row ${project.id === activeProjectId ? 'active' : ''} ${draggingId === project.id ? 'is-dragging' : ''} ${dragOverId === project.id && draggingId !== project.id ? 'is-drag-over' : ''}`}
+                key={project.id}
+                onDragOver={(event) => { if (draggingId) { event.preventDefault(); setDragOverId(project.id); } }}
+                onDragLeave={() => setDragOverId((current) => current === project.id ? null : current)}
+                onDrop={(event) => { event.preventDefault(); finishReorder(project.id); setDraggingId(null); setDragOverId(null); }}
+              >
                 {editingId === project.id ? (
                   <>
                     <input autoFocus value={editingName} onChange={(event) => setEditingName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { onRename(project.id, editingName); setEditingId(null); } }} aria-label={t('New project name', 'Tên project mới')} />
@@ -1134,6 +1152,14 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
                   <><span className="delete-question">{t(`Delete “${project.name}”?`, `Xóa “${project.name}”?`)}</span><button className="confirm-delete" onClick={() => { onDelete(project.id); setDeletePending(null); }} aria-label={t('Confirm delete', 'Xác nhận xóa')}><Check size={12} /></button><button onClick={() => setDeletePending(null)} aria-label={t('Cancel delete', 'Hủy xóa')}><X size={12} /></button></>
                 ) : (
                   <>
+                    <button
+                      className="project-drag-handle"
+                      draggable
+                      onDragStart={(event) => { setDraggingId(project.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', project.id); }}
+                      onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
+                      aria-label={t(`Drag ${project.name} to reorder`, `KÃ©o ${project.name} Ä‘á»ƒ sáº¯p xáº¿p`)}
+                      title={t('Drag to reorder', 'KÃ©o Ä‘á»ƒ sáº¯p xáº¿p')}
+                    ><GripVertical size={13} /></button>
                     <button className="project-select" onClick={() => { onSelect(project.id); setOpen(false); }}>
                       <span className="project-dot"></span><span><strong>{project.name}</strong><small>{project.nodeCount || 0} nodes · {project.edgeCount || 0} links</small></span>
                     </button>
@@ -1154,8 +1180,9 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
   );
 }
 
-function Sidebar({ collapsed, setCollapsed, addNode, counts, resetProject, openSettings, projects, activeProjectId, onSelectProject, onCreateProject, onRenameProject, onDeleteProject }) {
+function Sidebar({ collapsed, setCollapsed, addNode, resetProject, openSettings, projects, activeProjectId, onSelectProject, onCreateProject, onRenameProject, onDeleteProject, onReorderProjects }) {
   const t = useTranslation();
+  const [confirmBaseTemplate, setConfirmBaseTemplate] = useState(false);
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="brand-row">
@@ -1166,9 +1193,8 @@ function Sidebar({ collapsed, setCollapsed, addNode, counts, resetProject, openS
         </button>
       </div>
 
-      {!collapsed && <><p className="side-label project-label">PROJECT</p><ProjectManager projects={projects} activeProjectId={activeProjectId} onSelect={onSelectProject} onCreate={onCreateProject} onRename={onRenameProject} onDelete={onDeleteProject} /></>}
+      {!collapsed && <ProjectManager projects={projects} activeProjectId={activeProjectId} onSelect={onSelectProject} onCreate={onCreateProject} onRename={onRenameProject} onDelete={onDeleteProject} onReorder={onReorderProjects} />}
 
-      {!collapsed && <p className="side-label">{t('ADD NODE', 'THÊM NODE')}</p>}
       <nav className="node-menu">
         <button onClick={() => addNode('textNode')}><span className="menu-icon blue"><Type size={17} /></span>{!collapsed && <><span><strong>Text</strong><small>{t('Text content', 'Nội dung văn bản')}</small></span><Plus size={15} /></>}</button>
         <button onClick={() => addNode('imageNode')}><span className="menu-icon orange"><ImageIcon size={17} /></span>{!collapsed && <><span><strong>Image</strong><small>{t('Image & visual', 'Ảnh & visual')}</small></span><Plus size={15} /></>}</button>
@@ -1176,18 +1202,16 @@ function Sidebar({ collapsed, setCollapsed, addNode, counts, resetProject, openS
         <button onClick={() => addNode('exampleNode')}><span className="menu-icon green"><BookOpenCheck size={17} /></span>{!collapsed && <><span><strong>Example</strong><small>{t('Reference image & input', 'Ảnh mẫu & input')}</small></span><Plus size={15} /></>}</button>
       </nav>
 
-      {!collapsed && (
-        <>
-          <div className="workspace-card">
-            <div className="workspace-card-title"><span><Sparkles size={14} /> Workspace</span><span className="saved"><Check size={11} /> {t('Saved', 'Đã lưu')}</span></div>
-            <div className="stats"><div><strong>{counts.nodes}</strong><span>Nodes</span></div><div><strong>{counts.edges}</strong><span>Links</span></div></div>
-          </div>
-        </>
-      )}
-
       <div className="sidebar-bottom">
         <button onClick={openSettings} title={t('Settings', 'Cài đặt')}><Settings size={16} />{!collapsed && <span>{t('Settings', 'Cài đặt')}</span>}</button>
-        <button onClick={resetProject} title={t('Reset Base Template', 'Tạo lại Base Template')}><RotateCcw size={16} />{!collapsed && <span>Base Template</span>}</button>
+        <button className="base-template-icon" onClick={() => setConfirmBaseTemplate((value) => !value)} title={t('Reset Base Template', 'Tạo lại Base Template')} aria-label={t('Reset Base Template', 'Tạo lại Base Template')}><RotateCcw size={16} /></button>
+        {confirmBaseTemplate && (
+          <div className="base-template-confirm">
+            <span>{t('Reset to Base Template?', 'Reset về Base Template?')}</span>
+            <button onClick={() => { resetProject(); setConfirmBaseTemplate(false); }} aria-label={t('Confirm reset', 'Xác nhận reset')}><Check size={12} /></button>
+            <button onClick={() => setConfirmBaseTemplate(false)} aria-label={t('Cancel reset', 'Hủy reset')}><X size={12} /></button>
+          </div>
+        )}
       </div>
     </aside>
   );
@@ -2117,6 +2141,7 @@ function FlowCanvas() {
       const nextProjects = [...projectsRef.current, project];
       projectsRef.current = nextProjects;
       setProjects(nextProjects);
+      await fileStorage.saveProjectOrder(nextProjects.map((item) => item.id));
       await loadProjectById(project.id);
       showToast(t(`Project “${project.name}” created`, `Đã tạo project “${project.name}”`));
     } catch (error) { showToast(error.message || t('Could not create the project', 'Không thể tạo project'), 'error'); }
@@ -2139,10 +2164,22 @@ function FlowCanvas() {
       const remaining = projects.filter((project) => project.id !== projectId);
       projectsRef.current = remaining;
       setProjects(remaining);
+      await fileStorage.saveProjectOrder(remaining.map((item) => item.id));
       if (projectId === activeProjectId && remaining[0]) await loadProjectById(remaining[0].id);
       showToast(t('Project and its resource folder deleted', 'Đã xóa project và toàn bộ folder tài nguyên'));
     } catch (error) { showToast(error.message || t('Could not delete the project', 'Không thể xóa project'), 'error'); }
   }, [projects, activeProjectId, loadProjectById, showToast, t]);
+
+  const reorderProjects = useCallback(async (orderedProjects) => {
+    projectsRef.current = orderedProjects;
+    setProjects(orderedProjects);
+    try {
+      await fileStorage.saveProjectOrder(orderedProjects.map((project) => project.id));
+      showToast(t('Project order saved', 'ÄÃ£ lÆ°u thá»© tá»± project'));
+    } catch (error) {
+      showToast(error.message || t('Could not save project order', 'KhÃ´ng thá»ƒ lÆ°u thá»© tá»± project'), 'error');
+    }
+  }, [showToast, t]);
 
   const displayNodes = useMemo(() => {
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -2339,7 +2376,7 @@ function FlowCanvas() {
     <NodeActionsContext.Provider value={actions}>
       <EdgeActionsContext.Provider value={edgeActions}>
       <main className={`app-shell theme-${theme}`} style={connectorStyle}>
-        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} addNode={addNode} counts={{ nodes: nodes.length, edges: edges.length }} resetProject={resetProject} openSettings={openSettingsPanel} projects={projects} activeProjectId={activeProjectId} onSelectProject={selectProject} onCreateProject={createProject} onRenameProject={renameProject} onDeleteProject={deleteProject} />
+        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} addNode={addNode} resetProject={resetProject} openSettings={openSettingsPanel} projects={projects} activeProjectId={activeProjectId} onSelectProject={selectProject} onCreateProject={createProject} onRenameProject={renameProject} onDeleteProject={deleteProject} onReorderProjects={reorderProjects} />
         <section
           className="canvas-area"
           ref={canvasRef}

@@ -1,6 +1,7 @@
 const DB_NAME = 'mergeboard-file-system';
 const STORE_NAME = 'handles';
 const ROOT_KEY = 'project-root';
+const WORKSPACE_META_FILE = '.mergeboard-workspace.json';
 
 let rootHandle = null;
 const objectUrls = new Set();
@@ -43,6 +44,24 @@ async function writeJson(directory, name, value) {
   const writer = await handle.createWritable();
   await writer.write(JSON.stringify(value, null, 2));
   await writer.close();
+}
+
+async function readWorkspaceMeta() {
+  try {
+    return await readJson(requireRoot(), WORKSPACE_META_FILE);
+  } catch {
+    return {};
+  }
+}
+
+async function writeWorkspaceMeta(patch) {
+  const current = await readWorkspaceMeta();
+  await writeJson(requireRoot(), WORKSPACE_META_FILE, {
+    version: 1,
+    ...current,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 async function writeFile(directory, name, value) {
@@ -168,6 +187,9 @@ export function getRootName() {
 export async function scanProjects() {
   const projects = [];
   const projectIds = new Set();
+  const workspaceMeta = await readWorkspaceMeta();
+  const projectOrder = Array.isArray(workspaceMeta.projectOrder) ? workspaceMeta.projectOrder : [];
+  const orderIndex = new Map(projectOrder.map((id, index) => [id, index]));
   for await (const [folder, handle] of requireRoot().entries()) {
     if (handle.kind !== 'directory') continue;
     try {
@@ -194,7 +216,16 @@ export async function scanProjects() {
       // A normal folder without project.json is intentionally ignored.
     }
   }
-  return projects.sort((first, second) => new Date(second.updatedAt) - new Date(first.updatedAt));
+  return projects.sort((first, second) => {
+    const firstIndex = orderIndex.has(first.id) ? orderIndex.get(first.id) : Number.POSITIVE_INFINITY;
+    const secondIndex = orderIndex.has(second.id) ? orderIndex.get(second.id) : Number.POSITIVE_INFINITY;
+    if (firstIndex !== secondIndex) return firstIndex - secondIndex;
+    return new Date(second.updatedAt) - new Date(first.updatedAt);
+  });
+}
+
+export async function saveProjectOrder(projectIds) {
+  await writeWorkspaceMeta({ projectOrder: projectIds });
 }
 
 export async function createProject(name, projects) {
