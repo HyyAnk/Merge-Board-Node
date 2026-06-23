@@ -1,4 +1,4 @@
-import React, { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
 import {
@@ -316,8 +316,8 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
       <button
         className="node-note-button"
         onClick={() => setOpen((value) => !value)}
-        aria-label={open ? t('Close note', 'Đóng ghi chú') : t('Open note', 'Mở ghi chú')}
-        title={t('Note', 'Ghi chú')}
+        aria-label={open ? t('Close note', 'ÄÃ³ng ghi chÃº') : t('Open note', 'Má»Ÿ ghi chÃº')}
+        title={t('Note', 'Ghi chÃº')}
       >
         <MessageSquare size={14} />
       </button>
@@ -327,7 +327,7 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
             ref={textareaRef}
             className="node-note-textarea nowheel"
             value={note || ''}
-            placeholder={t('Write a quick note…', 'Nhập ghi chú nhanh...')}
+            placeholder={t('Write a quick noteâ€¦', 'Nháº­p ghi chÃº nhanh...')}
             onChange={(event) => { updateNode(nodeId, { note: event.target.value }); fitNoteHeight(event.currentTarget); }}
             autoFocus
           />
@@ -377,8 +377,8 @@ function PortStack({ ports = [], type, position, color, compact = false }) {
         position={position}
         className={`port ${position === Position.Left ? 'port-input' : 'port-output'} ${port.idle ? 'port-idle' : 'port-connected'}`}
         style={{ top: offset, '--port-color': port.color || color }}
-        aria-label={type === 'target' ? t('Connector input', 'Đầu nhận connector') : t('Connector output', 'Đầu ra connector')}
-        title={type === 'target' ? t('Input', 'Đầu nhận') : t('Drag to connect', 'Kéo để tạo kết nối')}
+        aria-label={type === 'target' ? t('Connector input', 'Äáº§u nháº­n connector') : t('Connector output', 'Äáº§u ra connector')}
+        title={type === 'target' ? t('Input', 'Äáº§u nháº­n') : t('Drag to connect', 'KÃ©o Ä‘á»ƒ táº¡o káº¿t ná»‘i')}
       />
     );
   });
@@ -404,24 +404,24 @@ function NodeHeader({ icon: Icon, title, nodeId, viewMode = 'expanded', color = 
         <input
           className="node-title"
           value={title}
-          aria-label={t('Node name', 'Tên node')}
+          aria-label={t('Node name', 'TÃªn node')}
           onChange={(event) => updateNode(nodeId, { title: event.target.value })}
         />
       </div>
       <div ref={actionsRef} className="node-actions nodrag" onMouseLeave={() => setPaletteOpen(false)}>
         <div className="node-color-picker">
-          <button className="color-trigger" onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose node color', 'Chọn màu node')} title={t('Choose node color', 'Chọn màu node')}><Palette size={14} /></button>
+          <button className="color-trigger" onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose node color', 'Chá»n mÃ u node')} title={t('Choose node color', 'Chá»n mÃ u node')}><Palette size={14} /></button>
           {paletteOpen && (
-            <div className="node-color-popover" aria-label={t('Node color palette', 'Bảng màu node')}>
-              {NODE_COLORS.map((item) => <button key={item} className={item === color ? 'active' : ''} style={{ '--swatch': item }} onClick={() => { updateNode(nodeId, { color: item }); setPaletteOpen(false); }} aria-label={t(`Node color ${item}`, `Màu node ${item}`)} />)}
+            <div className="node-color-popover" aria-label={t('Node color palette', 'Báº£ng mÃ u node')}>
+              {NODE_COLORS.map((item) => <button key={item} className={item === color ? 'active' : ''} style={{ '--swatch': item }} onClick={() => { updateNode(nodeId, { color: item }); setPaletteOpen(false); }} aria-label={t(`Node color ${item}`, `MÃ u node ${item}`)} />)}
             </div>
           )}
         </div>
         <button
           className="view-mode-toggle"
           onClick={() => updateNode(nodeId, { viewMode: viewMode === 'expanded' ? 'compact' : 'expanded' })}
-          aria-label={viewMode === 'expanded' ? t('Compact view', 'Hiển thị rút gọn') : t('Expanded view', 'Hiển thị đầy đủ')}
-          title={viewMode === 'expanded' ? t('Compact view', 'Hiển thị rút gọn') : t('Expanded view', 'Hiển thị đầy đủ')}
+          aria-label={viewMode === 'expanded' ? t('Compact view', 'Hiá»ƒn thá»‹ rÃºt gá»n') : t('Expanded view', 'Hiá»ƒn thá»‹ Ä‘áº§y Ä‘á»§')}
+          title={viewMode === 'expanded' ? t('Compact view', 'Hiá»ƒn thá»‹ rÃºt gá»n') : t('Expanded view', 'Hiá»ƒn thá»‹ Ä‘áº§y Ä‘á»§')}
         >{viewMode === 'expanded' ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button>
       </div>
     </header>
@@ -436,8 +436,8 @@ function CopyButton({ value, kind = 'text' }) {
       className="copy-button nodrag"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => { event.stopPropagation(); copyResource(value, kind); }}
-      aria-label={kind === 'image' ? t('Copy image', 'Copy ảnh') : t('Copy text', 'Copy text')}
-      title={kind === 'image' ? t('Copy image', 'Copy ảnh') : t('Copy text', 'Copy text')}
+      aria-label={kind === 'image' ? t('Copy image', 'Copy áº£nh') : t('Copy text', 'Copy text')}
+      title={kind === 'image' ? t('Copy image', 'Copy áº£nh') : t('Copy text', 'Copy text')}
     >
       <Copy size={13} />
     </button>
@@ -477,18 +477,18 @@ const TextNode = memo(({ id, data, selected }) => {
             ref={editorRef}
             className="text-editor is-editing nodrag nowheel"
             value={data.content}
-            placeholder={t('Enter your content…', 'Nhập nội dung của bạn...')}
+            placeholder={t('Enter your contentâ€¦', 'Nháº­p ná»™i dung cá»§a báº¡n...')}
             onChange={(event) => updateNode(id, { content: event.target.value })}
             onDoubleClick={(event) => event.stopPropagation()}
             onBlur={() => setEditing(false)}
           />
         ) : (
           <div ref={editorRef} className="text-editor text-display nowheel" onDoubleClick={beginEditing}>
-            {data.content || <span className="text-placeholder">{t('Double-click to enter content…', 'Double-click để nhập nội dung...')}</span>}
+            {data.content || <span className="text-placeholder">{t('Double-click to enter contentâ€¦', 'Double-click Ä‘á»ƒ nháº­p ná»™i dung...')}</span>}
           </div>
         )}
       </div>
-      <span className="node-external-meta">{data.content.length} {t('characters', 'ký tự')}</span>
+      <span className="node-external-meta">{data.content.length} {t('characters', 'kÃ½ tá»±')}</span>
       <div className="node-border-copy"><CopyButton value={data.content} /></div>
       <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
     </NodeShell>
@@ -511,7 +511,7 @@ const ImageNode = memo(({ id, data, selected }) => {
   const onFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) return showToast(t('Please choose a valid image file', 'Vui lòng chọn đúng định dạng ảnh'), 'error');
+    if (!file.type.startsWith('image/')) return showToast(t('Please choose a valid image file', 'Vui lÃ²ng chá»n Ä‘Ãºng Ä‘á»‹nh dáº¡ng áº£nh'), 'error');
     setUploading(true);
     try {
       await uploadImage(id, file);
@@ -525,7 +525,7 @@ const ImageNode = memo(({ id, data, selected }) => {
     event.stopPropagation();
     setDragOver(false);
     const file = [...(event.dataTransfer?.files || [])].find((item) => item.type.startsWith('image/'));
-    if (!file) return showToast(t('Drop a valid image file into the Image Node', 'Hãy thả đúng file ảnh vào Image Node'), 'error');
+    if (!file) return showToast(t('Drop a valid image file into the Image Node', 'HÃ£y tháº£ Ä‘Ãºng file áº£nh vÃ o Image Node'), 'error');
     setUploading(true);
     try { await uploadImage(id, file); }
     finally { setUploading(false); }
@@ -621,23 +621,23 @@ const ImageNode = memo(({ id, data, selected }) => {
         <div className="node-body image-node-content">
           {data.image ? (
             <div className="image-preview" onDoubleClick={(event) => { event.stopPropagation(); setPreviewOpen(true); }}>
-              <img src={data.image} alt={data.title || t('Image resource', 'Tài nguyên ảnh')} draggable="false" onLoad={(event) => { const next = { width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }; setDimensions(next); if (next.width !== data.imageWidth || next.height !== data.imageHeight) updateNode(id, { imageWidth: next.width, imageHeight: next.height }); }} />
-              {!!dimensions.width && <span className="image-dimensions">{dimensions.width} × {dimensions.height}</span>}
+              <img src={data.image} alt={data.title || t('Image resource', 'TÃ i nguyÃªn áº£nh')} draggable="false" onLoad={(event) => { const next = { width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }; setDimensions(next); if (next.width !== data.imageWidth || next.height !== data.imageHeight) updateNode(id, { imageWidth: next.width, imageHeight: next.height }); }} />
+              {!!dimensions.width && <span className="image-dimensions">{dimensions.width} Ã— {dimensions.height}</span>}
               {selected && <div className="image-selection-gradient" />}
-              {selected && <label className="replace-image nodrag" title={t('Replace image', 'Đổi ảnh')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
+              {selected && <label className="replace-image nodrag" title={t('Replace image', 'Äá»•i áº£nh')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
             </div>
           ) : (
-            <div className="empty-image-surface"><label className="replace-image compact-upload-button nodrag" title={uploading ? t('Saving…', 'Đang sao lưu...') : t('Upload image', 'Tải ảnh lên')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label></div>
+            <div className="empty-image-surface"><label className="replace-image compact-upload-button nodrag" title={uploading ? t('Savingâ€¦', 'Äang sao lÆ°u...') : t('Upload image', 'Táº£i áº£nh lÃªn')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label></div>
           )}
         </div>
-        <span className="node-external-meta file-name">{data.fileName || t('No image', 'Chưa có ảnh')}</span>
+        <span className="node-external-meta file-name">{data.fileName || t('No image', 'ChÆ°a cÃ³ áº£nh')}</span>
         {data.image && <div className="node-border-copy"><CopyButton value={data.image} kind="image" /></div>}
         <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
       </NodeShell>
       {previewOpen && createPortal(
         <div className="image-lightbox" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewOpen(false); }}>
-          <section className="image-lightbox-panel" role="dialog" aria-modal="true" aria-label={t('Large image preview', 'Xem ảnh kích thước lớn')}>
-            <header><span><ImageIcon size={16} /><strong>{data.fileName || data.title}</strong></span><button onClick={() => setPreviewOpen(false)} aria-label={t('Close', 'Đóng')}><X size={18} /></button></header>
+          <section className="image-lightbox-panel" role="dialog" aria-modal="true" aria-label={t('Large image preview', 'Xem áº£nh kÃ­ch thÆ°á»›c lá»›n')}>
+            <header><span><ImageIcon size={16} /><strong>{data.fileName || data.title}</strong></span><button onClick={() => setPreviewOpen(false)} aria-label={t('Close', 'ÄÃ³ng')}><X size={18} /></button></header>
             <div
               ref={lightboxStageRef}
               className={`image-lightbox-stage ${lightboxView.zoom > 1 ? 'is-zoomed' : ''} ${lightboxView.panning ? 'is-panning' : ''}`}
@@ -648,7 +648,7 @@ const ImageNode = memo(({ id, data, selected }) => {
               onPointerCancel={finishLightboxPan}
               onDoubleClick={() => setLightboxView({ zoom: 1, x: 0, y: 0, panning: false })}
             ><img src={data.image} alt={data.title || data.fileName} draggable="false" style={{ width: lightboxFit.width || undefined, height: lightboxFit.height || undefined, maxWidth: lightboxFit.width ? 'none' : undefined, maxHeight: lightboxFit.height ? 'none' : undefined, transform: `translate(${lightboxView.x}px, ${lightboxView.y}px) scale(${lightboxView.zoom})` }} /></div>
-            <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px · {t('Zoom', 'Thu phóng')} {Math.round(lightboxView.zoom * 100)}%{lightboxView.zoom > 1 ? ` · ${t('drag to pan', 'kéo để xem')}` : ''}</span><button onClick={() => revealAsset(data.assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer', 'Mở asset trong Explorer')}</button></footer>
+            <footer><span>{dimensions.width || 'â€”'} Ã— {dimensions.height || 'â€”'} px Â· {t('Zoom', 'Thu phÃ³ng')} {Math.round(lightboxView.zoom * 100)}%{lightboxView.zoom > 1 ? ` Â· ${t('drag to pan', 'kÃ©o Ä‘á»ƒ xem')}` : ''}</span><button onClick={() => revealAsset(data.assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer', 'Má»Ÿ asset trong Explorer')}</button></footer>
           </section>
         </div>,
         document.body,
@@ -672,23 +672,23 @@ const MixerNode = memo(({ id, data, selected }) => {
         <NodeHeader icon={Merge} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
         <div className="mixer-content nowheel">
           {!resources.length && (
-            <div className="empty-mixer"><Zap size={23} /><strong>{t('Connect resources', 'Kết nối tài nguyên')}</strong><span>{t('Drag a connector from Text or Image into the left port.', 'Kéo dây từ Text hoặc Image vào cổng bên trái.')}</span></div>
+            <div className="empty-mixer"><Zap size={23} /><strong>{t('Connect resources', 'Káº¿t ná»‘i tÃ i nguyÃªn')}</strong><span>{t('Drag a connector from Text or Image into the left port.', 'KÃ©o dÃ¢y tá»« Text hoáº·c Image vÃ o cá»•ng bÃªn trÃ¡i.')}</span></div>
           )}
           {resources.map((resource, index) => (
             <section className="resource-block" key={`${resource.sourceId}-${index}`}>
               {resource.kind !== 'image' && <div className="resource-meta"><span className={`resource-kind ${resource.kind}`}>{resource.title}</span><CopyButton value={resource.value} kind={resource.kind} /></div>}
               {resource.kind === 'image'
-                ? <div className="mixer-image-wrap"><img className="mixer-image" src={resource.value} alt={resource.title} draggable="false" /><button className={`mixer-image-title-link nodrag ${(resource.title || '').length > 25 ? 'is-long' : ''}`} style={{ color: resource.sourceColor || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(resource.sourceId); }} aria-label={t(`Go to ${resource.title}`, `Đi tới ${resource.title}`)} title={resource.title}><span>{resource.title || t('Untitled Image', 'Ảnh chưa đặt tên')}</span></button><div className="mixer-image-copy"><CopyButton value={resource.value} kind="image" /></div></div>
+                ? <div className="mixer-image-wrap"><img className="mixer-image" src={resource.value} alt={resource.title} draggable="false" /><button className={`mixer-image-title-link nodrag ${(resource.title || '').length > 25 ? 'is-long' : ''}`} style={{ color: resource.sourceColor || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(resource.sourceId); }} aria-label={t(`Go to ${resource.title}`, `Äi tá»›i ${resource.title}`)} title={resource.title}><span>{resource.title || t('Untitled Image', 'áº¢nh chÆ°a Ä‘áº·t tÃªn')}</span></button><div className="mixer-image-copy"><CopyButton value={resource.value} kind="image" /></div></div>
                 : resource.segments?.length
-                  ? <div className="mixer-text mixer-text-group">{resource.segments.map((segment, segmentIndex) => <section className={`mixer-text-segment tone-${segmentIndex % 2 ? 'b' : 'a'}`} key={segment.sourceId}><div className="mixer-segment-source"><button className="mixer-segment-title-link nodrag" style={{ color: segment.color || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(segment.sourceId); }} aria-label={t(`Go to ${segment.title || 'text node'}`, `Đi tới ${segment.title || 'node text'}`)} title={t('Go to source node', 'Đi tới node nguồn')}>{segment.title || t('Untitled Text', 'Text chưa đặt tên')}</button></div><p>{segment.value}</p></section>)}</div>
-                  : <p className="mixer-text">{resource.value || <em>{t('Empty content', 'Nội dung trống')}</em>}</p>}
+                  ? <div className="mixer-text mixer-text-group">{resource.segments.map((segment, segmentIndex) => <section className={`mixer-text-segment tone-${segmentIndex % 2 ? 'b' : 'a'}`} key={segment.sourceId}><div className="mixer-segment-source"><button className="mixer-segment-title-link nodrag" style={{ color: segment.color || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(segment.sourceId); }} aria-label={t(`Go to ${segment.title || 'text node'}`, `Äi tá»›i ${segment.title || 'node text'}`)} title={t('Go to source node', 'Äi tá»›i node nguá»“n')}>{segment.title || t('Untitled Text', 'Text chÆ°a Ä‘áº·t tÃªn')}</button></div><p>{segment.value}</p></section>)}</div>
+                  : <p className="mixer-text">{resource.value || <em>{t('Empty content', 'Ná»™i dung trá»‘ng')}</em>}</p>}
             </section>
           ))}
         </div>
         <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
       </div>
       <div className="mixer-footer-note is-outside">
-        <span>{imageCount} {t('images', 'ảnh')}</span><span>{textResource ? `${textResource.count} text · ${t('merged', 'đã gộp')}` : '0 text'}</span>
+        <span>{imageCount} {t('images', 'áº£nh')}</span><span>{textResource ? `${textResource.count} text Â· ${t('merged', 'Ä‘Ã£ gá»™p')}` : '0 text'}</span>
       </div>
     </NodeShell>
   );
@@ -706,7 +706,7 @@ const ExampleNode = memo(({ id, data, selected }) => {
   const onFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) return showToast(t('Please choose a valid image file', 'Vui lòng chọn đúng định dạng ảnh'), 'error');
+    if (!file.type.startsWith('image/')) return showToast(t('Please choose a valid image file', 'Vui lÃ²ng chá»n Ä‘Ãºng Ä‘á»‹nh dáº¡ng áº£nh'), 'error');
     setUploading(true);
     try { await uploadImage(id, file); }
     finally { setUploading(false); event.target.value = ''; }
@@ -718,21 +718,21 @@ const ExampleNode = memo(({ id, data, selected }) => {
       <div className="example-content nowheel">
         {data.image ? (
           <div className="image-preview example-preview">
-            <img src={data.image} alt={data.title || t('Example image', 'Ảnh example')} draggable="false" />
-            {selected && <label className="replace-image compact-upload-button nodrag" title={t('Replace example image', 'Đổi ảnh example')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
+            <img src={data.image} alt={data.title || t('Example image', 'áº¢nh example')} draggable="false" />
+            {selected && <label className="replace-image compact-upload-button nodrag" title={t('Replace example image', 'Äá»•i áº£nh example')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
           </div>
         ) : (
-          <div className="empty-image-surface"><label className="replace-image compact-upload-button nodrag" title={uploading ? t('Saving…', 'Đang sao lưu...') : t('Upload example image', 'Tải ảnh example lên')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label></div>
+          <div className="empty-image-surface"><label className="replace-image compact-upload-button nodrag" title={uploading ? t('Savingâ€¦', 'Äang sao lÆ°u...') : t('Upload example image', 'Táº£i áº£nh example lÃªn')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label></div>
         )}
-        <div className="mixer-footer-note example-resource-count"><span>{inputImageCount} {t('images', 'ảnh')}</span><span>{inputTextCount} text</span></div>
+        <div className="mixer-footer-note example-resource-count"><span>{inputImageCount} {t('images', 'áº£nh')}</span><span>{inputTextCount} text</span></div>
         <section className="example-inputs">
-          <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE · {inputTitles.length}</div>
+          <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE Â· {inputTitles.length}</div>
           {inputTitles.length ? inputTitles.map((item) => (
             <div className={`example-title-row ${item.kind}`} key={item.id}>
               {item.kind === 'example' ? <BookOpenCheck size={13} /> : item.kind === 'image' ? <ImageIcon size={13} /> : <FileText size={13} />}
-              <button className="example-title-link nodrag" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(item.id); }} aria-label={t(`Go to ${item.title || 'input node'}`, `Đi tới ${item.title || 'node input'}`)} title={t('Go to input node', 'Đi tới node input')}>{item.title || t('Untitled node', 'Node chưa đặt tên')}</button>
+              <button className="example-title-link nodrag" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(item.id); }} aria-label={t(`Go to ${item.title || 'input node'}`, `Äi tá»›i ${item.title || 'node input'}`)} title={t('Go to input node', 'Äi tá»›i node input')}>{item.title || t('Untitled node', 'Node chÆ°a Ä‘áº·t tÃªn')}</button>
             </div>
-          )) : <div className="example-empty">{t('Connect Text, Image, or Mixer to the left port.', 'Cắm Text, Image hoặc Mixer vào cổng bên trái.')}</div>}
+          )) : <div className="example-empty">{t('Connect Text, Image, or Mixer to the left port.', 'Cáº¯m Text, Image hoáº·c Mixer vÃ o cá»•ng bÃªn trÃ¡i.')}</div>}
         </section>
       </div>
       {data.image && <div className="node-border-copy"><CopyButton value={data.image} kind="image" /></div>}
@@ -745,7 +745,7 @@ const CanvasImageNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
   const { updateNode } = useContext(NodeActionsContext);
   return (
-    <div className={`canvas-image-node ${selected ? 'is-selected' : ''}`} style={{ width: data.width || 320, height: data.height || 240 }} title={t('Free image · right-click to make a node', 'Ảnh tự do · chuột phải để Make node')}>
+    <div className={`canvas-image-node ${selected ? 'is-selected' : ''}`} style={{ width: data.width || 320, height: data.height || 240 }} title={t('Free image Â· right-click to make a node', 'áº¢nh tá»± do Â· chuá»™t pháº£i Ä‘á»ƒ Make node')}>
       <NodeNoteControl nodeId={id} note={data.note} color="#8b7cf6" />
       <NodeResizer
         isVisible={selected}
@@ -757,7 +757,7 @@ const CanvasImageNode = memo(({ id, data, selected }) => {
         lineClassName="canvas-image-resize-line"
         onResize={(_event, params) => updateNode(id, { width: params.width, height: params.height })}
       />
-      <img src={data.image} alt={data.fileName || t('Canvas image', 'Ảnh trên canvas')} draggable="false" />
+      <img src={data.image} alt={data.fileName || t('Canvas image', 'áº¢nh trÃªn canvas')} draggable="false" />
     </div>
   );
 });
@@ -766,9 +766,9 @@ const JoinNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
   const color = data.color || '#8b7cf6';
   return (
-    <div className={`join-point ${selected ? 'is-selected' : ''} ${data.moveEnabled ? 'is-move-enabled' : ''}`} style={{ '--join-color': color }} title={data.moveEnabled ? t('Drag to move Join Point', 'Kéo để di chuyển Join Point') : 'Join Point'}>
-      <Handle id="join-in" type="target" position={Position.Left} className="join-unified-handle join-target-zone" aria-label={t('Join Point input', 'Đầu nhận Join Point')} title={t('Input', 'Đầu nhận')} />
-      <Handle id="join-out" type="source" position={Position.Right} className="join-unified-handle join-source-zone" aria-label={t('Join Point output', 'Đầu ra Join Point')} title={t('Output', 'Đầu ra')} />
+    <div className={`join-point ${selected ? 'is-selected' : ''} ${data.moveEnabled ? 'is-move-enabled' : ''}`} style={{ '--join-color': color }} title={data.moveEnabled ? t('Drag to move Join Point', 'KÃ©o Ä‘á»ƒ di chuyá»ƒn Join Point') : 'Join Point'}>
+      <Handle id="join-in" type="target" position={Position.Left} className="join-unified-handle join-target-zone" aria-label={t('Join Point input', 'Äáº§u nháº­n Join Point')} title={t('Input', 'Äáº§u nháº­n')} />
+      <Handle id="join-out" type="source" position={Position.Right} className="join-unified-handle join-source-zone" aria-label={t('Join Point output', 'Äáº§u ra Join Point')} title={t('Output', 'Äáº§u ra')} />
       <NodeNoteControl nodeId={id} note={data.note} color={color} className="join-note-control" />
       <Waypoints size={16} strokeWidth={2.6} />
     </div>
@@ -806,13 +806,13 @@ const SectionNode = memo(({ id, data, selected }) => {
         onResize={(_event, params) => updateNode(id, { width: params.width, height: params.height })}
       />
       <div className="section-title-wrap nodrag" style={{ transform: `scale(${titleScale})` }}>
-        <input value={data.title || 'Section'} onChange={(event) => updateNode(id, { title: event.target.value })} aria-label={t('Section name', 'Tên Section')} />
+        <input value={data.title || 'Section'} onChange={(event) => updateNode(id, { title: event.target.value })} aria-label={t('Section name', 'TÃªn Section')} />
       </div>
       {selected && !data?.relatedHighlighted && (
         <div className="section-actions nodrag" ref={actionsRef}>
-          <button onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose Section color', 'Chọn màu Section')} title={t('Choose Section color', 'Chọn màu Section')}><Palette size={14} /></button>
-          <button onClick={() => removeNode(id)} aria-label={t('Delete Section', 'Xóa Section')} title={t('Delete Section', 'Xóa Section')}><Trash2 size={14} /></button>
-          {paletteOpen && <div className="section-palette">{NODE_COLORS.map((item) => <button key={item} style={{ '--swatch': item }} onClick={() => { updateNode(id, { color: item }); setPaletteOpen(false); }} aria-label={t(`Section color ${item}`, `Màu Section ${item}`)} />)}</div>}
+          <button onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose Section color', 'Chá»n mÃ u Section')} title={t('Choose Section color', 'Chá»n mÃ u Section')}><Palette size={14} /></button>
+          <button onClick={() => removeNode(id)} aria-label={t('Delete Section', 'XÃ³a Section')} title={t('Delete Section', 'XÃ³a Section')}><Trash2 size={14} /></button>
+          {paletteOpen && <div className="section-palette">{NODE_COLORS.map((item) => <button key={item} style={{ '--swatch': item }} onClick={() => { updateNode(id, { color: item }); setPaletteOpen(false); }} aria-label={t(`Section color ${item}`, `MÃ u Section ${item}`)} />)}</div>}
         </div>
       )}
     </section>
@@ -1076,8 +1076,8 @@ const BeamEdge = memo(({
             className="edge-cut-button nodrag nopan"
             style={{ transform: `translate(-50%, -50%) translate(${cutX}px, ${cutY}px)` }}
             onClick={(event) => { event.stopPropagation(); removeEdge(id); }}
-            aria-label={t('Disconnect', 'Ngắt kết nối')}
-            title={t('Disconnect', 'Ngắt kết nối')}
+            aria-label={t('Disconnect', 'Ngáº¯t káº¿t ná»‘i')}
+            title={t('Disconnect', 'Ngáº¯t káº¿t ná»‘i')}
           >
             <Scissors size={20} />
           </button>
@@ -1126,9 +1126,9 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
 
   return (
     <div className="project-manager" ref={managerRef}>
-      <button className="project-current" onClick={() => setOpen((value) => !value)} aria-label={t('Project list', 'Danh sách project')}>
+      <button className="project-current" onClick={() => setOpen((value) => !value)} aria-label={t('Project list', 'Danh sÃ¡ch project')}>
         <span className="project-folder"><FolderKanban size={15} /></span>
-        <span><strong>{active?.name || t('Loading…', 'Đang tải...')}</strong><small>{active?.folder || t('Project storage', 'Bộ nhớ project')}</small></span>
+        <span><strong>{active?.name || t('Loadingâ€¦', 'Äang táº£i...')}</strong><small>{active?.folder || t('Project storage', 'Bá»™ nhá»› project')}</small></span>
         <ChevronDown size={14} className={open ? 'rotated' : ''} />
       </button>
       {open && (
@@ -1144,12 +1144,12 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
               >
                 {editingId === project.id ? (
                   <>
-                    <input autoFocus value={editingName} onChange={(event) => setEditingName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { onRename(project.id, editingName); setEditingId(null); } }} aria-label={t('New project name', 'Tên project mới')} />
-                    <button onClick={() => { onRename(project.id, editingName); setEditingId(null); }} aria-label={t('Save name', 'Lưu tên')}><Check size={12} /></button>
-                    <button onClick={() => setEditingId(null)} aria-label={t('Cancel rename', 'Hủy đổi tên')}><X size={12} /></button>
+                    <input autoFocus value={editingName} onChange={(event) => setEditingName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { onRename(project.id, editingName); setEditingId(null); } }} aria-label={t('New project name', 'TÃªn project má»›i')} />
+                    <button onClick={() => { onRename(project.id, editingName); setEditingId(null); }} aria-label={t('Save name', 'LÆ°u tÃªn')}><Check size={12} /></button>
+                    <button onClick={() => setEditingId(null)} aria-label={t('Cancel rename', 'Há»§y Ä‘á»•i tÃªn')}><X size={12} /></button>
                   </>
                 ) : deletePending === project.id ? (
-                  <><span className="delete-question">{t(`Delete “${project.name}”?`, `Xóa “${project.name}”?`)}</span><button className="confirm-delete" onClick={() => { onDelete(project.id); setDeletePending(null); }} aria-label={t('Confirm delete', 'Xác nhận xóa')}><Check size={12} /></button><button onClick={() => setDeletePending(null)} aria-label={t('Cancel delete', 'Hủy xóa')}><X size={12} /></button></>
+                  <><span className="delete-question">{t(`Delete â€œ${project.name}â€?`, `XÃ³a â€œ${project.name}â€?`)}</span><button className="confirm-delete" onClick={() => { onDelete(project.id); setDeletePending(null); }} aria-label={t('Confirm delete', 'XÃ¡c nháº­n xÃ³a')}><Check size={12} /></button><button onClick={() => setDeletePending(null)} aria-label={t('Cancel delete', 'Há»§y xÃ³a')}><X size={12} /></button></>
                 ) : (
                   <>
                     <button
@@ -1157,22 +1157,22 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
                       draggable
                       onDragStart={(event) => { setDraggingId(project.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', project.id); }}
                       onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
-                      aria-label={t(`Drag ${project.name} to reorder`, `KÃ©o ${project.name} Ä‘á»ƒ sáº¯p xáº¿p`)}
-                      title={t('Drag to reorder', 'KÃ©o Ä‘á»ƒ sáº¯p xáº¿p')}
+                      aria-label={t(`Drag ${project.name} to reorder`, `KÃƒÂ©o ${project.name} Ã„â€˜Ã¡Â»Æ’ sÃ¡ÂºÂ¯p xÃ¡ÂºÂ¿p`)}
+                      title={t('Drag to reorder', 'KÃƒÂ©o Ã„â€˜Ã¡Â»Æ’ sÃ¡ÂºÂ¯p xÃ¡ÂºÂ¿p')}
                     ><GripVertical size={13} /></button>
                     <button className="project-select" onClick={() => { onSelect(project.id); setOpen(false); }}>
-                      <span className="project-dot"></span><span><strong>{project.name}</strong><small>{project.nodeCount || 0} nodes · {project.edgeCount || 0} links</small></span>
+                      <span className="project-dot"></span><span><strong>{project.name}</strong><small>{project.nodeCount || 0} nodes Â· {project.edgeCount || 0} links</small></span>
                     </button>
-                    <button onClick={() => { setEditingId(project.id); setEditingName(project.name); }} aria-label={t(`Rename ${project.name}`, `Đổi tên ${project.name}`)}><Pencil size={11} /></button>
-                    <button disabled={projects.length <= 1} onClick={() => setDeletePending(project.id)} aria-label={t(`Delete ${project.name}`, `Xóa ${project.name}`)}><Trash2 size={11} /></button>
+                    <button onClick={() => { setEditingId(project.id); setEditingName(project.name); }} aria-label={t(`Rename ${project.name}`, `Äá»•i tÃªn ${project.name}`)}><Pencil size={11} /></button>
+                    <button disabled={projects.length <= 1} onClick={() => setDeletePending(project.id)} aria-label={t(`Delete ${project.name}`, `XÃ³a ${project.name}`)}><Trash2 size={11} /></button>
                   </>
                 )}
               </div>
             ))}
           </div>
           <form className="project-create" onSubmit={(event) => { event.preventDefault(); if (newName.trim()) { onCreate(newName.trim()); setNewName(''); setOpen(false); } }}>
-            <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder={t('New project name', 'Tên project mới')} aria-label={t('New project name', 'Tên project mới')} />
-            <button type="submit" disabled={!newName.trim()} aria-label={t('Create project', 'Tạo project')}><FolderPlus size={14} /></button>
+            <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder={t('New project name', 'TÃªn project má»›i')} aria-label={t('New project name', 'TÃªn project má»›i')} />
+            <button type="submit" disabled={!newName.trim()} aria-label={t('Create project', 'Táº¡o project')}><FolderPlus size={14} /></button>
           </form>
         </div>
       )}
@@ -1188,7 +1188,7 @@ function Sidebar({ collapsed, setCollapsed, addNode, resetProject, openSettings,
       <div className="brand-row">
         <div className="brand-mark"><Merge size={20} /></div>
         {!collapsed && <div><strong>mergeboard</strong><span>visual composer</span></div>}
-        <button className="collapse-btn" onClick={() => setCollapsed(!collapsed)} aria-label={t('Collapse sidebar', 'Thu gọn thanh bên')}>
+        <button className="collapse-btn" onClick={() => setCollapsed(!collapsed)} aria-label={t('Collapse sidebar', 'Thu gá»n thanh bÃªn')}>
           {collapsed ? <Menu size={17} /> : <ChevronLeft size={17} />}
         </button>
       </div>
@@ -1196,20 +1196,20 @@ function Sidebar({ collapsed, setCollapsed, addNode, resetProject, openSettings,
       {!collapsed && <ProjectManager projects={projects} activeProjectId={activeProjectId} onSelect={onSelectProject} onCreate={onCreateProject} onRename={onRenameProject} onDelete={onDeleteProject} onReorder={onReorderProjects} />}
 
       <nav className="node-menu">
-        <button onClick={() => addNode('textNode')}><span className="menu-icon blue"><Type size={17} /></span>{!collapsed && <><span><strong>Text</strong><small>{t('Text content', 'Nội dung văn bản')}</small></span><Plus size={15} /></>}</button>
-        <button onClick={() => addNode('imageNode')}><span className="menu-icon orange"><ImageIcon size={17} /></span>{!collapsed && <><span><strong>Image</strong><small>{t('Image & visual', 'Ảnh & visual')}</small></span><Plus size={15} /></>}</button>
-        <button onClick={() => addNode('mixerNode')}><span className="menu-icon violet"><Merge size={17} /></span>{!collapsed && <><span><strong>Mixer</strong><small>{t('Collect resources', 'Gom tài nguyên')}</small></span><Plus size={15} /></>}</button>
-        <button onClick={() => addNode('exampleNode')}><span className="menu-icon green"><BookOpenCheck size={17} /></span>{!collapsed && <><span><strong>Example</strong><small>{t('Reference image & input', 'Ảnh mẫu & input')}</small></span><Plus size={15} /></>}</button>
+        <button onClick={() => addNode('textNode')}><span className="menu-icon blue"><Type size={17} /></span>{!collapsed && <><span><strong>Text</strong><small>{t('Text content', 'Ná»™i dung vÄƒn báº£n')}</small></span><Plus size={15} /></>}</button>
+        <button onClick={() => addNode('imageNode')}><span className="menu-icon orange"><ImageIcon size={17} /></span>{!collapsed && <><span><strong>Image</strong><small>{t('Image & visual', 'áº¢nh & visual')}</small></span><Plus size={15} /></>}</button>
+        <button onClick={() => addNode('mixerNode')}><span className="menu-icon violet"><Merge size={17} /></span>{!collapsed && <><span><strong>Mixer</strong><small>{t('Collect resources', 'Gom tÃ i nguyÃªn')}</small></span><Plus size={15} /></>}</button>
+        <button onClick={() => addNode('exampleNode')}><span className="menu-icon green"><BookOpenCheck size={17} /></span>{!collapsed && <><span><strong>Example</strong><small>{t('Reference image & input', 'áº¢nh máº«u & input')}</small></span><Plus size={15} /></>}</button>
       </nav>
 
       <div className="sidebar-bottom">
-        <button onClick={openSettings} title={t('Settings', 'Cài đặt')}><Settings size={16} />{!collapsed && <span>{t('Settings', 'Cài đặt')}</span>}</button>
-        <button className="base-template-icon" onClick={() => setConfirmBaseTemplate((value) => !value)} title={t('Reset Base Template', 'Tạo lại Base Template')} aria-label={t('Reset Base Template', 'Tạo lại Base Template')}><RotateCcw size={16} /></button>
+        <button onClick={openSettings} title={t('Settings', 'CÃ i Ä‘áº·t')}><Settings size={16} />{!collapsed && <span>{t('Settings', 'CÃ i Ä‘áº·t')}</span>}</button>
+        <button className="base-template-icon" onClick={() => setConfirmBaseTemplate((value) => !value)} title={t('Reset Base Template', 'Táº¡o láº¡i Base Template')} aria-label={t('Reset Base Template', 'Táº¡o láº¡i Base Template')}><RotateCcw size={16} /></button>
         {confirmBaseTemplate && (
           <div className="base-template-confirm">
-            <span>{t('Reset to Base Template?', 'Reset về Base Template?')}</span>
-            <button onClick={() => { resetProject(); setConfirmBaseTemplate(false); }} aria-label={t('Confirm reset', 'Xác nhận reset')}><Check size={12} /></button>
-            <button onClick={() => setConfirmBaseTemplate(false)} aria-label={t('Cancel reset', 'Hủy reset')}><X size={12} /></button>
+            <span>{t('Reset to Base Template?', 'Reset vá» Base Template?')}</span>
+            <button onClick={() => { resetProject(); setConfirmBaseTemplate(false); }} aria-label={t('Confirm reset', 'XÃ¡c nháº­n reset')}><Check size={12} /></button>
+            <button onClick={() => setConfirmBaseTemplate(false)} aria-label={t('Cancel reset', 'Há»§y reset')}><X size={12} /></button>
           </div>
         )}
       </div>
@@ -1404,22 +1404,22 @@ function FlowCanvas() {
     commitPendingHistory();
     const history = historyRef.current;
     const previous = history.past.pop();
-    if (!previous) return showToast(t('Nothing to undo', 'Không còn thao tác để hoàn tác'), 'error');
+    if (!previous) return showToast(t('Nothing to undo', 'KhÃ´ng cÃ²n thao tÃ¡c Ä‘á»ƒ hoÃ n tÃ¡c'), 'error');
     history.future.push(history.current);
     history.current = previous;
     restoreHistorySnapshot(previous);
-    showToast(t('Undid the last action', 'Đã hoàn tác thao tác gần nhất'));
+    showToast(t('Undid the last action', 'ÄÃ£ hoÃ n tÃ¡c thao tÃ¡c gáº§n nháº¥t'));
   }, [commitPendingHistory, restoreHistorySnapshot, showToast, t]);
 
   const redoGraph = useCallback(() => {
     commitPendingHistory();
     const history = historyRef.current;
     const next = history.future.pop();
-    if (!next) return showToast(t('Nothing to redo', 'Không còn thao tác để làm lại'), 'error');
+    if (!next) return showToast(t('Nothing to redo', 'KhÃ´ng cÃ²n thao tÃ¡c Ä‘á»ƒ lÃ m láº¡i'), 'error');
     history.past.push(history.current);
     history.current = next;
     restoreHistorySnapshot(next);
-    showToast(t('Redid the last action', 'Đã làm lại thao tác gần nhất'));
+    showToast(t('Redid the last action', 'ÄÃ£ lÃ m láº¡i thao tÃ¡c gáº§n nháº¥t'));
   }, [commitPendingHistory, restoreHistorySnapshot, showToast, t]);
 
   const updateProjects = useCallback((updater) => {
@@ -1438,7 +1438,7 @@ function FlowCanvas() {
   const loadProjectById = useCallback(async (projectId) => {
     setStorageReady(false); setSaveStatus('loading'); setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); setMovableJoinId(null); setEdgeCutPoints({}); setToolMode('select'); setSectionDraft(null);
     const entry = projectsRef.current.find((project) => project.id === projectId);
-    if (!entry) throw new Error(t('Project not found', 'Không tìm thấy project'));
+    if (!entry) throw new Error(t('Project not found', 'KhÃ´ng tÃ¬m tháº¥y project'));
     const project = await fileStorage.readProject(entry);
     const loadedNodes = project.nodes || [];
     const loadedEdges = (project.edges || []).map((edge) => ({ ...edge, type: 'beam' }));
@@ -1468,12 +1468,12 @@ function FlowCanvas() {
     setChoosingAssetFolder(true);
     try {
       const permission = await fileStorage.rootPermission(handle, true);
-      if (permission !== 'granted') throw new Error(t('Read and write access was not granted', 'Bạn chưa cho phép đọc và ghi folder'));
+      if (permission !== 'granted') throw new Error(t('Read and write access was not granted', 'Báº¡n chÆ°a cho phÃ©p Ä‘á»c vÃ  ghi folder'));
       await fileStorage.useRoot(handle);
       await loadRootProjects();
-      showToast(t('Project folder reconnected', 'Đã kết nối lại Folder lưu Project'));
+      showToast(t('Project folder reconnected', 'ÄÃ£ káº¿t ná»‘i láº¡i Folder lÆ°u Project'));
     } catch (error) {
-      showToast(error.message || t('Could not connect the project folder', 'Không thể kết nối folder project'), 'error');
+      showToast(error.message || t('Could not connect the project folder', 'KhÃ´ng thá»ƒ káº¿t ná»‘i folder project'), 'error');
     } finally {
       setChoosingAssetFolder(false);
     }
@@ -1487,9 +1487,9 @@ function FlowCanvas() {
       await fileStorage.chooseRoot();
       rememberedRootRef.current = await fileStorage.getRememberedRoot();
       const list = await loadRootProjects();
-      showToast(t(`Folder connected · ${list.length} project(s) found`, `Đã kết nối folder và nhận ${list.length} project`));
+      showToast(t(`Folder connected Â· ${list.length} project(s) found`, `ÄÃ£ káº¿t ná»‘i folder vÃ  nháº­n ${list.length} project`));
     } catch (error) {
-      if (error?.name !== 'AbortError') showToast(error.message || t('Could not select the project folder', 'Không thể chọn Folder lưu Project'), 'error');
+      if (error?.name !== 'AbortError') showToast(error.message || t('Could not select the project folder', 'KhÃ´ng thá»ƒ chá»n Folder lÆ°u Project'), 'error');
     } finally {
       if (wasReady && fileStorage.getRootName()) setStorageReady(true);
       setChoosingAssetFolder(false);
@@ -1532,7 +1532,7 @@ function FlowCanvas() {
       } catch (error) {
         setSaveStatus('error');
         setStorageGate('needs-folder');
-        showToast(error.message || t('Could not open project storage', 'Không thể mở bộ nhớ project'), 'error');
+        showToast(error.message || t('Could not open project storage', 'KhÃ´ng thá»ƒ má»Ÿ bá»™ nhá»› project'), 'error');
       }
     };
     initializeStorage();
@@ -1546,7 +1546,7 @@ function FlowCanvas() {
     const timeout = setTimeout(async () => {
       try {
         const project = projectsRef.current.find((item) => item.id === activeProjectId);
-        if (!project) throw new Error(t('The active project was not found', 'Không tìm thấy project đang mở'));
+        if (!project) throw new Error(t('The active project was not found', 'KhÃ´ng tÃ¬m tháº¥y project Ä‘ang má»Ÿ'));
         const saved = await fileStorage.saveProject(project, nodes, edges);
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
         updateProjects((current) => current.map((item) => item.id === activeProjectId ? { ...item, ...saved } : item));
@@ -1575,25 +1575,25 @@ function FlowCanvas() {
 
   const focusNode = useCallback((nodeId) => {
     const target = getNode(nodeId);
-    if (!target) return showToast(t('Input node not found', 'Không tìm thấy node input'), 'error');
+    if (!target) return showToast(t('Input node not found', 'KhÃ´ng tÃ¬m tháº¥y node input'), 'error');
     const position = target.positionAbsolute || target.position;
     const width = target.measured?.width || target.width || 300;
     const height = target.measured?.height || target.height || 180;
     setNodes((current) => current.map((node) => ({ ...node, selected: node.id === nodeId })));
     setToolMode('select'); setContextMenu(null); setEdgeMenu(null);
     setCenter(position.x + width / 2, position.y + height / 2, { zoom: viewportZoom < 0.85 ? 1 : Math.min(viewportZoom, 1.2), duration: 650 });
-    showToast(t(`Moved to “${target.data?.title || 'input node'}”`, `Đã di chuyển tới “${target.data?.title || 'node input'}”`));
+    showToast(t(`Moved to â€œ${target.data?.title || 'input node'}â€`, `ÄÃ£ di chuyá»ƒn tá»›i â€œ${target.data?.title || 'node input'}â€`));
   }, [getNode, setCenter, showToast, viewportZoom, t]);
 
   const uploadImage = useCallback(async (id, file) => {
     try {
-      if (!activeProjectId) throw new Error(t('No project selected', 'Chưa chọn project'));
+      if (!activeProjectId) throw new Error(t('No project selected', 'ChÆ°a chá»n project'));
       const project = projectsRef.current.find((item) => item.id === activeProjectId);
       const uploaded = await fileStorage.uploadAsset(project, file, file.name);
       updateNode(id, { image: uploaded.url, assetFile: uploaded.assetFile, fileName: uploaded.fileName });
-      showToast(t('Image saved to the project folder', 'Đã sao lưu ảnh vào folder project'));
+      showToast(t('Image saved to the project folder', 'ÄÃ£ sao lÆ°u áº£nh vÃ o folder project'));
     } catch (error) {
-      showToast(error.message || t('Could not save the image', 'Không thể sao lưu ảnh'), 'error');
+      showToast(error.message || t('Could not save the image', 'KhÃ´ng thá»ƒ sao lÆ°u áº£nh'), 'error');
       throw error;
     }
   }, [showToast, updateNode, activeProjectId, t]);
@@ -1603,36 +1603,48 @@ function FlowCanvas() {
       const project = projectsRef.current.find((item) => item.id === activeProjectId);
       await fileStorage.revealAsset(project, assetFile);
     } catch (error) {
-      showToast(error.message || t('Could not open the asset in Explorer', 'Không thể mở asset trong Explorer'), 'error');
+      showToast(error.message || t('Could not open the asset in Explorer', 'KhÃ´ng thá»ƒ má»Ÿ asset trong Explorer'), 'error');
     }
   }, [activeProjectId, showToast, t]);
 
-  const addCanvasImage = useCallback(async (file, clientPoint = null) => {
+  const addCanvasImages = useCallback(async (files, clientPoint = null) => {
     try {
-      if (!activeProjectId) throw new Error(t('No project selected', 'Chưa chọn project'));
-      const dataUrl = await fileToDataUrl(file);
-      const imageSize = await getImageSize(dataUrl);
-      const fileName = file.name || `clipboard-image-${Date.now()}.${file.type?.split('/')[1] || 'png'}`;
+      if (!activeProjectId) throw new Error(t('No project selected', 'Chua ch?n project'));
+      const imageFiles = files.filter((file) => file?.type?.startsWith('image/'));
+      if (!imageFiles.length) return;
       const project = projectsRef.current.find((item) => item.id === activeProjectId);
-      const uploaded = await fileStorage.uploadAsset(project, file, fileName);
-      const scale = Math.min(1, 420 / imageSize.width, 340 / imageSize.height);
-      const width = Math.max(80, Math.round(imageSize.width * scale));
-      const height = Math.max(60, Math.round(imageSize.height * scale));
       const center = screenToFlowPosition(clientPoint || { x: window.innerWidth / 2, y: window.innerHeight / 2 });
-      const id = `canvasImageNode-${Date.now()}`;
-      setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), {
-        id,
-        type: 'canvasImageNode',
-        position: { x: center.x - width / 2, y: center.y - height / 2 },
-        data: { image: uploaded.url, assetFile: uploaded.assetFile, fileName: uploaded.fileName, width, height },
-        selected: true,
-      }]);
-      showToast(t('Image pasted onto the canvas', 'Đã dán ảnh vào canvas'));
+      const columns = Math.min(3, Math.ceil(Math.sqrt(imageFiles.length)));
+      const createdAt = Date.now();
+      const createdNodes = await Promise.all(imageFiles.map(async (file, index) => {
+        const dataUrl = await fileToDataUrl(file);
+        const imageSize = await getImageSize(dataUrl);
+        const fileName = file.name || `clipboard-image-${createdAt}-${index}.${file.type?.split('/')[1] || 'png'}`;
+        const uploaded = await fileStorage.uploadAsset(project, file, fileName);
+        const scale = Math.min(1, 420 / imageSize.width, 340 / imageSize.height);
+        const width = Math.max(80, Math.round(imageSize.width * scale));
+        const height = Math.max(60, Math.round(imageSize.height * scale));
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        return {
+          id: `canvasImageNode-${createdAt}-${index}`,
+          type: 'canvasImageNode',
+          position: {
+            x: center.x - width / 2 + column * 460,
+            y: center.y - height / 2 + row * 380,
+          },
+          data: { image: uploaded.url, assetFile: uploaded.assetFile, fileName: uploaded.fileName, width, height },
+          selected: true,
+        };
+      }));
+      setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), ...createdNodes]);
+      showToast(imageFiles.length === 1 ? t('Image pasted onto the canvas', 'Ðã dán ?nh vào canvas') : t(`${imageFiles.length} images pasted onto the canvas`, `Ðã dán ${imageFiles.length} ?nh vào canvas`));
     } catch (error) {
-      showToast(error.message || t('Could not paste the image onto the canvas', 'Không thể dán ảnh vào canvas'), 'error');
+      showToast(error.message || t('Could not paste the image onto the canvas', 'Không th? dán ?nh vào canvas'), 'error');
     }
   }, [activeProjectId, screenToFlowPosition, showToast, t]);
 
+  const addCanvasImage = useCallback((file, clientPoint = null) => addCanvasImages([file], clientPoint), [addCanvasImages]);
   const onCanvasImageDragOver = useCallback((event) => {
     const hasImage = [...(event.dataTransfer?.items || [])].some((item) => item.kind === 'file' && item.type.startsWith('image/'))
       || [...(event.dataTransfer?.files || [])].some((file) => file.type.startsWith('image/'))
@@ -1645,79 +1657,111 @@ function FlowCanvas() {
 
   const onCanvasImageDrop = useCallback(async (event) => {
     if (event.target?.closest?.('.react-flow__node')) return;
-    let file = [...(event.dataTransfer?.files || [])].find((item) => item.type.startsWith('image/')) || null;
-    if (!file) {
+    let files = [...(event.dataTransfer?.files || [])].filter((item) => item.type.startsWith('image/'));
+    if (!files.length) {
       const html = event.dataTransfer?.getData('text/html');
-      const source = html ? new DOMParser().parseFromString(html, 'text/html').querySelector('img')?.src : event.dataTransfer?.getData('text/uri-list')?.split(/\r?\n/).find((line) => line && !line.startsWith('#'));
-      if (source) {
+      const sources = html
+        ? [...new DOMParser().parseFromString(html, 'text/html').querySelectorAll('img')].map((image) => image.src).filter(Boolean)
+        : event.dataTransfer?.getData('text/uri-list')?.split(/\r?\n/).filter((line) => line && !line.startsWith('#')) || [];
+      files = (await Promise.all(sources.map(async (source, index) => {
         try {
           const blob = await (await fetch(source)).blob();
-          if (blob.type.startsWith('image/')) file = new File([blob], `dropped-image-${Date.now()}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type });
-        } catch { /* a remote image can be blocked by CORS */ }
-      }
+          return blob.type.startsWith('image/') ? new File([blob], `dropped-image-${Date.now()}-${index}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type }) : null;
+        } catch { return null; /* a remote image can be blocked by CORS */ }
+      }))).filter(Boolean);
     }
-    if (!file) return;
+    if (!files.length) return;
     event.preventDefault();
     event.stopPropagation();
-    await addCanvasImage(file, { x: event.clientX, y: event.clientY });
-  }, [addCanvasImage]);
+    await addCanvasImages(files, { x: event.clientX, y: event.clientY });
+  }, [addCanvasImages]);
+
+  const addTextNodeFromClipboard = useCallback((content) => {
+    const value = String(content || '').trim();
+    if (!value) return false;
+    const id = `textNode-${Date.now()}`;
+    const position = screenToFlowPosition({ x: window.innerWidth / 2 + 80, y: window.innerHeight / 2 });
+    setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), {
+      id,
+      type: 'textNode',
+      position,
+      data: {
+        title: t('Pasted Text', 'Text đã paste'),
+        content: value,
+        viewMode: 'expanded',
+        color: '#3b82f6',
+      },
+      selected: true,
+    }]);
+    showToast(t('Text pasted as a new node', 'Đã paste text thành node mới'));
+    return true;
+  }, [screenToFlowPosition, showToast, t]);
 
   useEffect(() => {
     const onPaste = async (event) => {
-      let file = [...(event.clipboardData?.files || [])].find((item) => item.type.startsWith('image/'));
-      if (!file) {
-        const imageItem = [...(event.clipboardData?.items || [])].find((item) => item.kind === 'file' && item.type.startsWith('image/'));
-        file = imageItem?.getAsFile() || null;
+      if (event.target?.closest?.('input, textarea, [contenteditable="true"]')) return;
+      let files = [...(event.clipboardData?.files || [])].filter((item) => item.type.startsWith('image/'));
+      if (!files.length) {
+        files = [...(event.clipboardData?.items || [])]
+          .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+          .map((item) => item.getAsFile())
+          .filter(Boolean);
       }
-      if (!file) {
+      if (!files.length) {
         const html = event.clipboardData?.getData('text/html');
-        const source = html ? new DOMParser().parseFromString(html, 'text/html').querySelector('img')?.src : null;
-        if (source) {
-          try {
-            const blob = await (await fetch(source)).blob();
-            if (blob.type.startsWith('image/')) file = new File([blob], `web-image-${Date.now()}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type });
-          } catch { /* copied web image may be blocked by CORS */ }
+        const sources = html ? [...new DOMParser().parseFromString(html, 'text/html').querySelectorAll('img')].map((image) => image.src).filter(Boolean) : [];
+        if (sources.length) {
+          files = (await Promise.all(sources.map(async (source, index) => {
+            try {
+              const blob = await (await fetch(source)).blob();
+              return blob.type.startsWith('image/') ? new File([blob], `web-image-${Date.now()}-${index}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type }) : null;
+            } catch { return null; /* copied web image may be blocked by CORS */ }
+          }))).filter(Boolean);
         }
       }
-      if (!file) return;
+      if (!files.length) {
+        const text = event.clipboardData?.getData('text/plain');
+        if (addTextNodeFromClipboard(text)) event.preventDefault();
+        return;
+      }
       event.preventDefault();
       const selectedImageNode = nodes.find((node) => node.selected && node.type === 'imageNode');
-      if (selectedImageNode) await uploadImage(selectedImageNode.id, file);
-      else await addCanvasImage(file);
+      if (selectedImageNode) await uploadImage(selectedImageNode.id, files[0]);
+      else await addCanvasImages(files);
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [addCanvasImage, nodes, uploadImage]);
+  }, [addCanvasImages, addTextNodeFromClipboard, nodes, uploadImage]);
 
   const removeNode = useCallback((id) => {
     setNodes((current) => current.filter((node) => node.id !== id));
     setEdges((current) => bridgeDeletedJoinPoints(nodes, current, [id]));
-    showToast(t('Node deleted', 'Đã xóa node'));
+    showToast(t('Node deleted', 'ÄÃ£ xÃ³a node'));
   }, [nodes, showToast, t]);
 
   const removeEdge = useCallback((id) => {
     setEdges((current) => current.filter((edge) => edge.id !== id));
     setEdgeCutPoints((current) => { const next = { ...current }; delete next[id]; return next; });
-    showToast(t('Connection removed', 'Đã ngắt kết nối'));
+    showToast(t('Connection removed', 'ÄÃ£ ngáº¯t káº¿t ná»‘i'));
   }, [showToast, t]);
 
   const copyResource = useCallback(async (value, kind) => {
-    if (!value) return showToast(t('This resource is empty', 'Tài nguyên đang trống'), 'error');
+    if (!value) return showToast(t('This resource is empty', 'TÃ i nguyÃªn Ä‘ang trá»‘ng'), 'error');
     try {
       if (kind === 'image' && window.ClipboardItem) {
         const blob = await (await fetch(value)).blob();
         const pngBlob = blob.type === 'image/png' ? blob : await convertImageToPng(value);
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-        showToast(t('Image copied to clipboard', 'Đã copy ảnh vào clipboard'));
+        showToast(t('Image copied to clipboard', 'ÄÃ£ copy áº£nh vÃ o clipboard'));
       } else {
         await navigator.clipboard.writeText(value);
-        showToast(kind === 'image' ? t('Image URL copied', 'Đã copy đường dẫn ảnh') : t('Content copied', 'Đã copy nội dung'));
+        showToast(kind === 'image' ? t('Image URL copied', 'ÄÃ£ copy Ä‘Æ°á»ng dáº«n áº£nh') : t('Content copied', 'ÄÃ£ copy ná»™i dung'));
       }
     } catch {
       try {
         await navigator.clipboard.writeText(value);
-        showToast(t('Resource copied', 'Đã copy tài nguyên'));
-      } catch { showToast(t('Clipboard access is not allowed', 'Trình duyệt chưa cho phép truy cập clipboard'), 'error'); }
+        showToast(t('Resource copied', 'ÄÃ£ copy tÃ i nguyÃªn'));
+      } catch { showToast(t('Clipboard access is not allowed', 'TrÃ¬nh duyá»‡t chÆ°a cho phÃ©p truy cáº­p clipboard'), 'error'); }
     }
   }, [showToast, t]);
 
@@ -1734,11 +1778,11 @@ function FlowCanvas() {
   const setEdgeColor = useCallback((edgeId, color) => {
     setEdges((current) => current.map((edge) => edge.id === edgeId ? { ...edge, data: { ...(edge.data || {}), color } } : edge));
     setEdgeMenu(null);
-    showToast(t('Connector color updated', 'Đã đổi màu dây nối'));
+    showToast(t('Connector color updated', 'ÄÃ£ Ä‘á»•i mÃ u dÃ¢y ná»‘i'));
   }, [showToast, t]);
   const connectNodes = useCallback((connection) => {
     const target = nodes.find((node) => node.id === connection.target);
-    if (!['mixerNode', 'exampleNode', 'joinNode'].includes(target?.type)) return showToast(t('Only Mixer, Example, or Join Point can receive input', 'Chỉ Mixer, Example hoặc Join Point mới nhận đầu vào'), 'error');
+    if (!['mixerNode', 'exampleNode', 'joinNode'].includes(target?.type)) return showToast(t('Only Mixer, Example, or Join Point can receive input', 'Chá»‰ Mixer, Example hoáº·c Join Point má»›i nháº­n Ä‘áº§u vÃ o'), 'error');
     if (connection.source === connection.target) return;
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const collectSourceLineage = (nodeId, graphEdges, visited = new Set()) => {
@@ -1774,8 +1818,8 @@ function FlowCanvas() {
       .map(([, duplicate]) => duplicate);
     if (newDuplicates.length) {
       const duplicateNames = [...new Set(newDuplicates.map(({ sourceId }) => nodeById.get(sourceId)?.data?.title || 'Input'))].join(', ');
-      const affectedNames = [...new Set(newDuplicates.map(({ receiverId }) => nodeById.get(receiverId)?.data?.title || t('receiver node', 'node nhận')))].join(', ');
-      showToast(t(`Duplicate input: ${duplicateNames} at ${affectedNames}`, `Bị trùng input: ${duplicateNames} tại ${affectedNames}`), 'error');
+      const affectedNames = [...new Set(newDuplicates.map(({ receiverId }) => nodeById.get(receiverId)?.data?.title || t('receiver node', 'node nháº­n')))].join(', ');
+      showToast(t(`Duplicate input: ${duplicateNames} at ${affectedNames}`, `Bá»‹ trÃ¹ng input: ${duplicateNames} táº¡i ${affectedNames}`), 'error');
       return false;
     }
     const alreadyConnected = edges.some((edge) => (
@@ -1783,7 +1827,7 @@ function FlowCanvas() {
       || (edge.source === connection.target && edge.target === connection.source)
     ));
     if (alreadyConnected) {
-      showToast(t('These nodes are already connected · only one connector is allowed', 'Hai node này đã có connector · chỉ cho phép tối đa 1 dây'), 'error');
+      showToast(t('These nodes are already connected Â· only one connector is allowed', 'Hai node nÃ y Ä‘Ã£ cÃ³ connector Â· chá»‰ cho phÃ©p tá»‘i Ä‘a 1 dÃ¢y'), 'error');
       return false;
     }
     const createsCycle = (start, sought, visited = new Set()) => {
@@ -1792,7 +1836,7 @@ function FlowCanvas() {
       visited.add(start);
       return edges.filter((edge) => edge.source === start).some((edge) => createsCycle(edge.target, sought, visited));
     };
-    if (createsCycle(connection.target, connection.source)) return showToast(t('A loop cannot be created between nodes', 'Không thể tạo vòng lặp giữa các node'), 'error');
+    if (createsCycle(connection.target, connection.source)) return showToast(t('A loop cannot be created between nodes', 'KhÃ´ng thá»ƒ táº¡o vÃ²ng láº·p giá»¯a cÃ¡c node'), 'error');
     const edgeId = `edge-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setEdges((current) => addEdge({
       ...connection,
@@ -1802,7 +1846,7 @@ function FlowCanvas() {
       type: 'beam',
       data: { color: 'gradient' },
     }, current));
-    showToast(target.type === 'exampleNode' ? t('Connected to Example Node', 'Đã kết nối vào Node Example') : target.type === 'joinNode' ? t('Connected to Join Point', 'Đã kết nối vào Join Point') : t('Connected to Mixer', 'Đã kết nối vào Mixer'));
+    showToast(target.type === 'exampleNode' ? t('Connected to Example Node', 'ÄÃ£ káº¿t ná»‘i vÃ o Node Example') : target.type === 'joinNode' ? t('Connected to Join Point', 'ÄÃ£ káº¿t ná»‘i vÃ o Join Point') : t('Connected to Mixer', 'ÄÃ£ káº¿t ná»‘i vÃ o Mixer'));
     return true;
   }, [nodes, edges, showToast, t]);
 
@@ -1833,21 +1877,21 @@ function FlowCanvas() {
     const id = `${type}-${Date.now()}`;
     const position = requestedPosition || screenToFlowPosition({ x: window.innerWidth / 2 + 80, y: window.innerHeight / 2 });
     const defaults = {
-      textNode: { title: t('New Text', 'Text mới'), content: '', viewMode: 'expanded', color: '#3b82f6' },
-      imageNode: { title: t('New Image', 'Ảnh mới'), image: '', fileName: '', viewMode: 'expanded', color: '#f59e0b' },
-      mixerNode: { title: t('New Mixer', 'Mixer mới'), viewMode: 'expanded', color: '#7c6cf2' },
+      textNode: { title: t('New Text', 'Text má»›i'), content: '', viewMode: 'expanded', color: '#3b82f6' },
+      imageNode: { title: t('New Image', 'áº¢nh má»›i'), image: '', fileName: '', viewMode: 'expanded', color: '#f59e0b' },
+      mixerNode: { title: t('New Mixer', 'Mixer má»›i'), viewMode: 'expanded', color: '#7c6cf2' },
       exampleNode: { title: t('Example Node', 'Node Example'), image: '', fileName: '', viewMode: 'expanded', color: '#10b981' },
     };
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), { id, type, position, data: defaults[type], selected: true }]);
     setContextMenu(null);
     const label = type === 'textNode' ? 'Text' : type === 'imageNode' ? 'Image' : type === 'mixerNode' ? 'Mixer' : t('Example Node', 'Node Example');
-    showToast(t(`Added ${label}`, `Đã thêm ${label}`));
+    showToast(t(`Added ${label}`, `ÄÃ£ thÃªm ${label}`));
   }, [screenToFlowPosition, showToast, t]);
 
   const duplicateSelected = useCallback(() => {
     const selectedNodes = nodes.filter((node) => node.selected);
     if (!selectedNodes.length) {
-      showToast(t('Select at least one node before duplicating', 'Hãy chọn node trước khi nhân bản'), 'error');
+      showToast(t('Select at least one node before duplicating', 'HÃ£y chá»n node trÆ°á»›c khi nhÃ¢n báº£n'), 'error');
       return;
     }
     const timestamp = Date.now();
@@ -1857,7 +1901,7 @@ function FlowCanvas() {
       id: `${node.type}-${timestamp}-${index}`,
       position: { x: node.position.x + delta.x, y: node.position.y + delta.y },
       selected: true,
-      data: { ...node.data, title: `${node.data.title || 'Node'} · ${t('copy', 'bản sao')}` },
+      data: { ...node.data, title: `${node.data.title || 'Node'} Â· ${t('copy', 'báº£n sao')}` },
     }));
     pendingDuplicateRef.current = {
       pairs: selectedNodes.map((node, index) => ({
@@ -1867,7 +1911,7 @@ function FlowCanvas() {
       })),
     };
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), ...copies]);
-    showToast(t(`Duplicated ${copies.length} node(s)`, `Đã nhân bản ${copies.length} node`));
+    showToast(t(`Duplicated ${copies.length} node(s)`, `ÄÃ£ nhÃ¢n báº£n ${copies.length} node`));
   }, [nodes, showToast, t]);
 
   const rememberDuplicateSpacing = useCallback((_event, node, draggedNodes = []) => {
@@ -1968,7 +2012,7 @@ function FlowCanvas() {
     const clientWidth = Math.abs(event.clientX - sectionDraft.startClient.x);
     const clientHeight = Math.abs(event.clientY - sectionDraft.startClient.y);
     setSectionDraft(null);
-    if (clientWidth < 70 || clientHeight < 50) return showToast(t('Drag a larger area to create a Section', 'Kéo một vùng lớn hơn để tạo Section'), 'error');
+    if (clientWidth < 70 || clientHeight < 50) return showToast(t('Drag a larger area to create a Section', 'KÃ©o má»™t vÃ¹ng lá»›n hÆ¡n Ä‘á»ƒ táº¡o Section'), 'error');
     const id = `sectionNode-${Date.now()}`;
     const color = NODE_COLORS[nodes.filter((node) => node.type === 'sectionNode').length % NODE_COLORS.length];
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), {
@@ -1983,7 +2027,7 @@ function FlowCanvas() {
       },
       selected: true,
     }]);
-    showToast(t('Section Group created · press V to return to Select', 'Đã tạo Section Group · nhấn V để quay lại Select'));
+    showToast(t('Section Group created Â· press V to return to Select', 'ÄÃ£ táº¡o Section Group Â· nháº¥n V Ä‘á»ƒ quay láº¡i Select'));
   }, [nodes, screenToFlowPosition, sectionDraft, showToast, t]);
 
   const openEdgeMenu = useCallback((event, edge) => {
@@ -2032,14 +2076,14 @@ function FlowCanvas() {
     setMovableJoinId(joinMenu.nodeId);
     setNodes((current) => current.map((node) => ({ ...node, selected: node.id === joinMenu.nodeId })));
     setJoinMenu(null);
-    showToast(t('Drag the Join Point to a new position', 'Kéo Join Point tới vị trí mới'));
+    showToast(t('Drag the Join Point to a new position', 'KÃ©o Join Point tá»›i vá»‹ trÃ­ má»›i'));
   }, [joinMenu, showToast, t]);
 
   const setJoinPointColor = useCallback((color) => {
     if (!joinMenu?.nodeId) return;
     updateNode(joinMenu.nodeId, { color });
     setJoinMenu(null);
-    showToast(t('Join Point color updated', 'Đã đổi màu Join Point'));
+    showToast(t('Join Point color updated', 'ÄÃ£ Ä‘á»•i mÃ u Join Point'));
   }, [joinMenu, showToast, updateNode, t]);
 
   const makeCanvasImageNode = useCallback(() => {
@@ -2047,7 +2091,7 @@ function FlowCanvas() {
     setNodes((current) => current.map((node) => {
       if (node.id !== canvasImageMenu.nodeId) return node;
       const { width: _width, height: _height, measured: _measured, ...baseNode } = node;
-      const title = (node.data.fileName || t('Image', 'Ảnh')).replace(/\.[^.]+$/, '');
+      const title = (node.data.fileName || t('Image', 'áº¢nh')).replace(/\.[^.]+$/, '');
       return {
         ...baseNode,
         type: 'imageNode',
@@ -2063,7 +2107,7 @@ function FlowCanvas() {
       };
     }));
     setCanvasImageMenu(null);
-    showToast(t('Image converted to an Image Node', 'Đã chuyển ảnh thành Image Node'));
+    showToast(t('Image converted to an Image Node', 'ÄÃ£ chuyá»ƒn áº£nh thÃ nh Image Node'));
   }, [canvasImageMenu, showToast, t]);
 
   const onEdgeClick = useCallback((event, edge) => {
@@ -2096,12 +2140,12 @@ function FlowCanvas() {
       { id: `${edgeMenu.edgeId}-out-${joinId}`, source: joinId, target, sourceHandle: null, targetHandle, type: 'beam', data: { color: edgeColor } },
     ]);
     setEdgeMenu(null);
-    showToast(t('Join Point created on the connector', 'Đã tạo Join Point trên dây nối'));
+    showToast(t('Join Point created on the connector', 'ÄÃ£ táº¡o Join Point trÃªn dÃ¢y ná»‘i'));
   }, [edgeMenu, nodes, showToast, t]);
 
   const resetProject = useCallback(async () => {
     try {
-      if (!activeProjectId) throw new Error(t('No project selected', 'Chưa chọn project'));
+      if (!activeProjectId) throw new Error(t('No project selected', 'ChÆ°a chá»n project'));
       const project = projectsRef.current.find((item) => item.id === activeProjectId);
       const restoredNodes = await Promise.all(initialNodes.map(async (node) => {
         if (node.type !== 'imageNode' || !node.data?.image?.startsWith('data:')) return node;
@@ -2112,10 +2156,10 @@ function FlowCanvas() {
       setNodes(restoredNodes);
       setEdges(initialEdges.map((edge) => ({ ...edge, data: { ...edge.data } })));
       localStorage.removeItem(STORAGE_KEY);
-      showToast(t('Base Template restored and saved', 'Đã tạo và sao lưu Base Template'));
+      showToast(t('Base Template restored and saved', 'ÄÃ£ táº¡o vÃ  sao lÆ°u Base Template'));
       setTimeout(() => fitView({ padding: 0.18, duration: 600 }), 80);
     } catch (error) {
-      showToast(error.message || t('Could not restore the project', 'Không thể khôi phục project'), 'error');
+      showToast(error.message || t('Could not restore the project', 'KhÃ´ng thá»ƒ khÃ´i phá»¥c project'), 'error');
     }
   }, [fitView, showToast, activeProjectId, t]);
 
@@ -2127,8 +2171,8 @@ function FlowCanvas() {
         await fileStorage.saveProject(current, nodes, edges);
       }
       await loadProjectById(projectId);
-      showToast(t('Project switched', 'Đã chuyển project'));
-    } catch (error) { showToast(error.message || t('Could not switch projects', 'Không thể chuyển project'), 'error'); setStorageReady(true); }
+      showToast(t('Project switched', 'ÄÃ£ chuyá»ƒn project'));
+    } catch (error) { showToast(error.message || t('Could not switch projects', 'KhÃ´ng thá»ƒ chuyá»ƒn project'), 'error'); setStorageReady(true); }
   }, [activeProjectId, storageReady, nodes, edges, loadProjectById, showToast, t]);
 
   const createProject = useCallback(async (name) => {
@@ -2143,8 +2187,8 @@ function FlowCanvas() {
       setProjects(nextProjects);
       await fileStorage.saveProjectOrder(nextProjects.map((item) => item.id));
       await loadProjectById(project.id);
-      showToast(t(`Project “${project.name}” created`, `Đã tạo project “${project.name}”`));
-    } catch (error) { showToast(error.message || t('Could not create the project', 'Không thể tạo project'), 'error'); }
+      showToast(t(`Project â€œ${project.name}â€ created`, `ÄÃ£ táº¡o project â€œ${project.name}â€`));
+    } catch (error) { showToast(error.message || t('Could not create the project', 'KhÃ´ng thá»ƒ táº¡o project'), 'error'); }
   }, [activeProjectId, storageReady, nodes, edges, loadProjectById, showToast, t]);
 
   const renameProject = useCallback(async (projectId, name) => {
@@ -2152,13 +2196,13 @@ function FlowCanvas() {
       const project = projectsRef.current.find((item) => item.id === projectId);
       const updated = await fileStorage.renameProject(project, name, projectsRef.current);
       updateProjects((current) => current.map((item) => item.id === projectId ? updated : item));
-      showToast(t('Project and folder renamed', 'Đã đổi tên project và folder'));
-    } catch (error) { showToast(error.message || t('Could not rename the project', 'Không thể đổi tên'), 'error'); }
+      showToast(t('Project and folder renamed', 'ÄÃ£ Ä‘á»•i tÃªn project vÃ  folder'));
+    } catch (error) { showToast(error.message || t('Could not rename the project', 'KhÃ´ng thá»ƒ Ä‘á»•i tÃªn'), 'error'); }
   }, [showToast, updateProjects, t]);
 
   const deleteProject = useCallback(async (projectId) => {
     try {
-      if (projects.length <= 1) throw new Error(t('At least one project must remain', 'Phải giữ lại ít nhất một project'));
+      if (projects.length <= 1) throw new Error(t('At least one project must remain', 'Pháº£i giá»¯ láº¡i Ã­t nháº¥t má»™t project'));
       const project = projects.find((item) => item.id === projectId);
       await fileStorage.deleteProject(project);
       const remaining = projects.filter((project) => project.id !== projectId);
@@ -2166,8 +2210,8 @@ function FlowCanvas() {
       setProjects(remaining);
       await fileStorage.saveProjectOrder(remaining.map((item) => item.id));
       if (projectId === activeProjectId && remaining[0]) await loadProjectById(remaining[0].id);
-      showToast(t('Project and its resource folder deleted', 'Đã xóa project và toàn bộ folder tài nguyên'));
-    } catch (error) { showToast(error.message || t('Could not delete the project', 'Không thể xóa project'), 'error'); }
+      showToast(t('Project and its resource folder deleted', 'ÄÃ£ xÃ³a project vÃ  toÃ n bá»™ folder tÃ i nguyÃªn'));
+    } catch (error) { showToast(error.message || t('Could not delete the project', 'KhÃ´ng thá»ƒ xÃ³a project'), 'error'); }
   }, [projects, activeProjectId, loadProjectById, showToast, t]);
 
   const reorderProjects = useCallback(async (orderedProjects) => {
@@ -2175,9 +2219,9 @@ function FlowCanvas() {
     setProjects(orderedProjects);
     try {
       await fileStorage.saveProjectOrder(orderedProjects.map((project) => project.id));
-      showToast(t('Project order saved', 'ÄÃ£ lÆ°u thá»© tá»± project'));
+      showToast(t('Project order saved', 'Ã„ÂÃƒÂ£ lÃ†Â°u thÃ¡Â»Â© tÃ¡Â»Â± project'));
     } catch (error) {
-      showToast(error.message || t('Could not save project order', 'KhÃ´ng thá»ƒ lÆ°u thá»© tá»± project'), 'error');
+      showToast(error.message || t('Could not save project order', 'KhÃƒÂ´ng thÃ¡Â»Æ’ lÃ†Â°u thÃ¡Â»Â© tÃ¡Â»Â± project'), 'error');
     }
   }, [showToast, t]);
 
@@ -2254,7 +2298,7 @@ function FlowCanvas() {
       const combinedText = texts.length ? [{
         sourceId: texts.map((resource) => resource.sourceId).join('-'),
         kind: 'text',
-        title: texts.length === 1 ? texts[0].title : t(`${texts.length} text entries`, `${texts.length} nội dung text`),
+        title: texts.length === 1 ? texts[0].title : t(`${texts.length} text entries`, `${texts.length} ná»™i dung text`),
         value: texts.map((resource) => resource.value.trim()).join('\n\n'),
         segments: texts.map((resource) => ({ sourceId: resource.sourceId, title: resource.title, value: resource.value.trim(), color: resource.sourceColor })),
         count: texts.length,
@@ -2386,18 +2430,18 @@ function FlowCanvas() {
           onDrop={onCanvasImageDrop}
         >
           <div className="canvas-topbar">
-            <div><span className="project-kicker">PROJECT</span><strong>{projects.find((project) => project.id === activeProjectId)?.name || t('Loading…', 'Đang tải...')}</strong></div>
-            <span className={`autosave ${saveStatus}`}><span></span> {saveStatus === 'loading' ? t('Opening folder', 'Đang mở folder') : saveStatus === 'saving' ? t('Saving locally', 'Đang lưu local') : saveStatus === 'error' ? t('Local save error', 'Lỗi lưu local') : t('Saved to local folder', 'Đã lưu vào folder local')}</span>
+            <div><span className="project-kicker">PROJECT</span><strong>{projects.find((project) => project.id === activeProjectId)?.name || t('Loadingâ€¦', 'Äang táº£i...')}</strong></div>
+            <span className={`autosave ${saveStatus}`}><span></span> {saveStatus === 'loading' ? t('Opening folder', 'Äang má»Ÿ folder') : saveStatus === 'saving' ? t('Saving locally', 'Äang lÆ°u local') : saveStatus === 'error' ? t('Local save error', 'Lá»—i lÆ°u local') : t('Saved to local folder', 'ÄÃ£ lÆ°u vÃ o folder local')}</span>
             <button
               className="top-icon theme-toggle"
-              title={theme === 'dark' ? t('Switch to Light mode', 'Chuyển sang Light mode') : t('Switch to Dark mode', 'Chuyển sang Dark mode')}
-              aria-label={theme === 'dark' ? t('Switch to Light mode', 'Chuyển sang Light mode') : t('Switch to Dark mode', 'Chuyển sang Dark mode')}
+              title={theme === 'dark' ? t('Switch to Light mode', 'Chuyá»ƒn sang Light mode') : t('Switch to Dark mode', 'Chuyá»ƒn sang Dark mode')}
+              aria-label={theme === 'dark' ? t('Switch to Light mode', 'Chuyá»ƒn sang Light mode') : t('Switch to Dark mode', 'Chuyá»ƒn sang Dark mode')}
               onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
             >
               {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
             </button>
           </div>
-          <div className="canvas-toolbox" aria-label={t('Canvas tools', 'Công cụ canvas')}>
+          <div className="canvas-toolbox" aria-label={t('Canvas tools', 'CÃ´ng cá»¥ canvas')}>
             <button className={toolMode === 'select' ? 'active' : ''} onClick={() => { setToolMode('select'); setSectionDraft(null); }} title="Select" aria-label="Select"><MousePointer2 size={18} /><kbd>V</kbd></button>
             <button className={toolMode === 'section' ? 'active' : ''} onClick={() => { setToolMode('section'); setContextMenu(null); setEdgeMenu(null); }} title="Section Group" aria-label="Section Group"><Square size={18} /><kbd>Shift + S</kbd></button>
           </div>
@@ -2444,37 +2488,37 @@ function FlowCanvas() {
             </div>
           )}
           {contextMenu && (
-            <div className="canvas-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" aria-label={t('Add node', 'Thêm node')}>
-              <div className="context-menu-title"><span>{t('ADD NODE', 'THÊM NODE')}</span><kbd>Right click</kbd></div>
+            <div className="canvas-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" aria-label={t('Add node', 'ThÃªm node')}>
+              <div className="context-menu-title"><span>{t('ADD NODE', 'THÃŠM NODE')}</span><kbd>Right click</kbd></div>
               <button role="menuitem" onClick={() => addNode('textNode', contextMenu.flowPosition)}><span className="menu-icon blue"><Type size={15} /></span><span>Text</span><Plus size={13} /></button>
               <button role="menuitem" onClick={() => addNode('imageNode', contextMenu.flowPosition)}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>Image</span><Plus size={13} /></button>
               <button role="menuitem" onClick={() => addNode('mixerNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Merge size={15} /></span><span>Mixer</span><Plus size={13} /></button>
               <button role="menuitem" onClick={() => addNode('exampleNode', contextMenu.flowPosition)}><span className="menu-icon green"><BookOpenCheck size={15} /></span><span>Example</span><Plus size={13} /></button>
-              <div className="context-menu-shortcut"><span>{t('Duplicate selected node', 'Nhân bản node đã chọn')}</span><kbd>Ctrl D</kbd></div>
+              <div className="context-menu-shortcut"><span>{t('Duplicate selected node', 'NhÃ¢n báº£n node Ä‘Ã£ chá»n')}</span><kbd>Ctrl D</kbd></div>
             </div>
           )}
           {joinMenu && (
-            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={t('Join Point options', 'Tùy chọn Join Point')}>
+            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={t('Join Point options', 'TÃ¹y chá»n Join Point')}>
               <div className="context-menu-title"><span>JOIN POINT</span><kbd>Right click</kbd></div>
-              <button role="menuitem" onClick={enableJoinMove}><span className="menu-icon violet"><MousePointer2 size={15} /></span><span>{t('Move Join Point', 'Di chuyển Join Point')}</span><ArrowRight size={13} /></button>
-              <button role="menuitem" onClick={() => setJoinMenu((current) => current ? { ...current, paletteOpen: !current.paletteOpen } : null)}><span className="menu-icon violet"><Palette size={15} /></span><span>{t('Change color', 'Chỉnh màu')}</span><ChevronDown size={13} /></button>
+              <button role="menuitem" onClick={enableJoinMove}><span className="menu-icon violet"><MousePointer2 size={15} /></span><span>{t('Move Join Point', 'Di chuyá»ƒn Join Point')}</span><ArrowRight size={13} /></button>
+              <button role="menuitem" onClick={() => setJoinMenu((current) => current ? { ...current, paletteOpen: !current.paletteOpen } : null)}><span className="menu-icon violet"><Palette size={15} /></span><span>{t('Change color', 'Chá»‰nh mÃ u')}</span><ChevronDown size={13} /></button>
               {joinMenu.paletteOpen && (
                 <div className="join-color-grid">
-                  {NODE_COLORS.map((color) => <button key={color} className={joinMenu.color === color ? 'active' : ''} style={{ '--join-swatch': color }} onClick={() => setJoinPointColor(color)} aria-label={t(`Join Point color ${color}`, `Màu Join Point ${color}`)} />)}
+                  {NODE_COLORS.map((color) => <button key={color} className={joinMenu.color === color ? 'active' : ''} style={{ '--join-swatch': color }} onClick={() => setJoinPointColor(color)} aria-label={t(`Join Point color ${color}`, `MÃ u Join Point ${color}`)} />)}
                 </div>
               )}
             </div>
           )}
           {canvasImageMenu && (
-            <div className="canvas-context-menu canvas-image-context-menu" style={{ left: canvasImageMenu.x, top: canvasImageMenu.y }} role="menu" aria-label={t('Canvas image options', 'Tùy chọn ảnh canvas')}>
+            <div className="canvas-context-menu canvas-image-context-menu" style={{ left: canvasImageMenu.x, top: canvasImageMenu.y }} role="menu" aria-label={t('Canvas image options', 'TÃ¹y chá»n áº£nh canvas')}>
               <div className="context-menu-title"><span>CANVAS IMAGE</span><kbd>Right click</kbd></div>
               <button role="menuitem" onClick={makeCanvasImageNode}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>Make node</span><ArrowRight size={13} /></button>
             </div>
           )}
           {edgeMenu && (
-            <div className="edge-color-menu" style={{ left: edgeMenu.x, top: edgeMenu.y }} role="menu" aria-label={t('Choose connector color', 'Chọn màu dây nối')}>
-              <div className="edge-color-title"><Palette size={13} /> {t('CONNECTOR COLOR', 'MÀU DÂY NỐI')}</div>
-              <button className={`edge-gradient-option ${edgeMenu.color === 'gradient' ? 'active' : ''}`} onClick={() => setEdgeColor(edgeMenu.edgeId, 'gradient')}><span></span><strong>{t('Gradient from node colors', 'Gradient theo màu node')}</strong></button>
+            <div className="edge-color-menu" style={{ left: edgeMenu.x, top: edgeMenu.y }} role="menu" aria-label={t('Choose connector color', 'Chá»n mÃ u dÃ¢y ná»‘i')}>
+              <div className="edge-color-title"><Palette size={13} /> {t('CONNECTOR COLOR', 'MÃ€U DÃ‚Y Ná»I')}</div>
+              <button className={`edge-gradient-option ${edgeMenu.color === 'gradient' ? 'active' : ''}`} onClick={() => setEdgeColor(edgeMenu.edgeId, 'gradient')}><span></span><strong>{t('Gradient from node colors', 'Gradient theo mÃ u node')}</strong></button>
               <div className="edge-color-grid">
                 {EDGE_COLORS.map((color, index) => (
                   <button
@@ -2482,46 +2526,46 @@ function FlowCanvas() {
                     className={edgeMenu.color === color ? 'active' : ''}
                     style={{ '--edge-swatch': color }}
                     onClick={() => setEdgeColor(edgeMenu.edgeId, color)}
-                    aria-label={t(`Connector color ${index + 1}`, `Màu dây ${index + 1}`)}
+                    aria-label={t(`Connector color ${index + 1}`, `MÃ u dÃ¢y ${index + 1}`)}
                   />
                 ))}
               </div>
-              <button className="create-join-button" onClick={createJoinPoint}><Waypoints size={15} /><span><strong>{t('Create Join Point', 'Tạo Join Point')}</strong><small>{t('Merge flows at this position', 'Gom luồng tại vị trí này')}</small></span></button>
+              <button className="create-join-button" onClick={createJoinPoint}><Waypoints size={15} /><span><strong>{t('Create Join Point', 'Táº¡o Join Point')}</strong><small>{t('Merge flows at this position', 'Gom luá»“ng táº¡i vá»‹ trÃ­ nÃ y')}</small></span></button>
             </div>
           )}
         </section>
         {storageGate !== 'ready' && (
           <div className="storage-setup-overlay">
-            <section className="storage-setup-card" role="dialog" aria-modal="true" aria-label={t('Connect project folder', 'Kết nối folder project')}>
+            <section className="storage-setup-card" role="dialog" aria-modal="true" aria-label={t('Connect project folder', 'Káº¿t ná»‘i folder project')}>
               <div className="storage-setup-icon"><FolderKanban size={28} /></div>
               <span className="storage-setup-kicker">MERGEBOARD LOCAL STORAGE</span>
-              <h1>{storageGate === 'checking' ? t('Checking folder…', 'Đang kiểm tra folder…') : storageGate === 'unsupported' ? t('Browser not supported', 'Trình duyệt chưa được hỗ trợ') : storageGate === 'needs-permission' ? t('Restore folder access', 'Cho phép truy cập lại folder') : t('Choose project storage', 'Chọn nơi lưu project')}</h1>
-              <p>{storageGate === 'unsupported' ? t('Open this page in Chrome or Microsoft Edge on a desktop computer.', 'Hãy mở trang này bằng Chrome hoặc Microsoft Edge trên máy tính.') : t('Projects, images, and content are read and written directly on your computer. No project data is uploaded to Vercel.', 'Project, ảnh và nội dung sẽ được đọc/ghi trực tiếp trên máy của bạn. Không có dữ liệu project nào được tải lên Vercel.')}</p>
+              <h1>{storageGate === 'checking' ? t('Checking folderâ€¦', 'Äang kiá»ƒm tra folderâ€¦') : storageGate === 'unsupported' ? t('Browser not supported', 'TrÃ¬nh duyá»‡t chÆ°a Ä‘Æ°á»£c há»— trá»£') : storageGate === 'needs-permission' ? t('Restore folder access', 'Cho phÃ©p truy cáº­p láº¡i folder') : t('Choose project storage', 'Chá»n nÆ¡i lÆ°u project')}</h1>
+              <p>{storageGate === 'unsupported' ? t('Open this page in Chrome or Microsoft Edge on a desktop computer.', 'HÃ£y má»Ÿ trang nÃ y báº±ng Chrome hoáº·c Microsoft Edge trÃªn mÃ¡y tÃ­nh.') : t('Projects, images, and content are read and written directly on your computer. No project data is uploaded to Vercel.', 'Project, áº£nh vÃ  ná»™i dung sáº½ Ä‘Æ°á»£c Ä‘á»c/ghi trá»±c tiáº¿p trÃªn mÃ¡y cá»§a báº¡n. KhÃ´ng cÃ³ dá»¯ liá»‡u project nÃ o Ä‘Æ°á»£c táº£i lÃªn Vercel.')}</p>
               {storageGate !== 'checking' && storageGate !== 'unsupported' && (
                 <div className="storage-setup-actions">
-                  {storageGate === 'needs-permission' && <button onClick={connectRememberedFolder} disabled={choosingAssetFolder}><Check size={17} />{choosingAssetFolder ? t('Waiting for confirmation…', 'Đang chờ xác nhận…') : t('Allow access', 'Cho phép truy cập')}</button>}
-                  <button className={storageGate === 'needs-permission' ? 'secondary' : ''} onClick={chooseProjectFolder} disabled={choosingAssetFolder}><FolderOpen size={17} />{choosingAssetFolder ? t('Waiting for folder selection…', 'Đang chờ chọn folder…') : storageGate === 'needs-permission' ? t('Choose another folder', 'Chọn folder khác') : t('Choose project folder', 'Chọn folder project')}</button>
+                  {storageGate === 'needs-permission' && <button onClick={connectRememberedFolder} disabled={choosingAssetFolder}><Check size={17} />{choosingAssetFolder ? t('Waiting for confirmationâ€¦', 'Äang chá» xÃ¡c nháº­nâ€¦') : t('Allow access', 'Cho phÃ©p truy cáº­p')}</button>}
+                  <button className={storageGate === 'needs-permission' ? 'secondary' : ''} onClick={chooseProjectFolder} disabled={choosingAssetFolder}><FolderOpen size={17} />{choosingAssetFolder ? t('Waiting for folder selectionâ€¦', 'Äang chá» chá»n folderâ€¦') : storageGate === 'needs-permission' ? t('Choose another folder', 'Chá»n folder khÃ¡c') : t('Choose project folder', 'Chá»n folder project')}</button>
                 </div>
               )}
-              <small>{t('Chrome/Edge will show a secure dialog for you to choose the folder.', 'Chrome/Edge sẽ hiện hộp thoại bảo mật để bạn tự chọn folder.')}</small>
+              <small>{t('Chrome/Edge will show a secure dialog for you to choose the folder.', 'Chrome/Edge sáº½ hiá»‡n há»™p thoáº¡i báº£o máº­t Ä‘á»ƒ báº¡n tá»± chá»n folder.')}</small>
             </section>
           </div>
         )}
         {settingsOpen && (
           <div className="settings-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !choosingAssetFolder) setSettingsOpen(false); }}>
-            <section className="settings-panel" role="dialog" aria-modal="true" aria-label={t('MergeBoard Settings', 'Cài đặt MergeBoard')}>
-              <header><div><Settings size={18} /><span><strong>{t('Settings', 'Cài đặt')}</strong><small>MergeBoard workspace</small></span></div><button onClick={() => setSettingsOpen(false)} disabled={choosingAssetFolder} aria-label={t('Close settings', 'Đóng cài đặt')}><X size={16} /></button></header>
+            <section className="settings-panel" role="dialog" aria-modal="true" aria-label={t('MergeBoard Settings', 'CÃ i Ä‘áº·t MergeBoard')}>
+              <header><div><Settings size={18} /><span><strong>{t('Settings', 'CÃ i Ä‘áº·t')}</strong><small>MergeBoard workspace</small></span></div><button onClick={() => setSettingsOpen(false)} disabled={choosingAssetFolder} aria-label={t('Close settings', 'ÄÃ³ng cÃ i Ä‘áº·t')}><X size={16} /></button></header>
               <div className="settings-content">
-                <div className="settings-label"><Languages size={15} /><span><strong>{t('Language', 'Ngôn ngữ')}</strong><small>{t('Choose the interface language.', 'Chọn ngôn ngữ hiển thị của giao diện.')}</small></span></div>
-                <div className="language-options" role="radiogroup" aria-label={t('Interface language', 'Ngôn ngữ giao diện')}>
+                <div className="settings-label"><Languages size={15} /><span><strong>{t('Language', 'NgÃ´n ngá»¯')}</strong><small>{t('Choose the interface language.', 'Chá»n ngÃ´n ngá»¯ hiá»ƒn thá»‹ cá»§a giao diá»‡n.')}</small></span></div>
+                <div className="language-options" role="radiogroup" aria-label={t('Interface language', 'NgÃ´n ngá»¯ giao diá»‡n')}>
                   <button className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')} role="radio" aria-checked={language === 'en'}>English</button>
-                  <button className={language === 'vi' ? 'active' : ''} onClick={() => setLanguage('vi')} role="radio" aria-checked={language === 'vi'}>Tiếng Việt</button>
+                  <button className={language === 'vi' ? 'active' : ''} onClick={() => setLanguage('vi')} role="radio" aria-checked={language === 'vi'}>Tiáº¿ng Viá»‡t</button>
                 </div>
                 <div className="settings-divider" />
-                <div className="settings-label"><FolderOpen size={15} /><span><strong>{t('Project storage folder', 'Folder lưu Project')}</strong><small>{t('Each project is an independent folder containing nodes, text, and assets.', 'Mỗi project là một folder độc lập, gồm hệ thống node, text và toàn bộ asset.')}</small></span></div>
-                <div className="settings-path" title={appSettings?.projectRoot || ''}>{appSettings?.projectRoot || t('No folder connected', 'Chưa kết nối folder')}</div>
-                <button className="choose-folder-button" onClick={chooseProjectFolder} disabled={choosingAssetFolder}><FolderOpen size={16} /><span>{choosingAssetFolder ? t('Waiting for folder selection…', 'Đang chờ bạn chọn folder...') : t('Choose folder', 'Chọn folder')}</span></button>
-                <p>{t('The browser displays only the folder name, not its full path. Choosing another folder switches workspaces; data in the old folder remains untouched.', 'Trình duyệt chỉ cho phép hiển thị tên folder, không hiển thị đường dẫn đầy đủ. Chọn folder khác sẽ chuyển workspace; dữ liệu trong folder cũ vẫn được giữ nguyên.')}</p>
+                <div className="settings-label"><FolderOpen size={15} /><span><strong>{t('Project storage folder', 'Folder lÆ°u Project')}</strong><small>{t('Each project is an independent folder containing nodes, text, and assets.', 'Má»—i project lÃ  má»™t folder Ä‘á»™c láº­p, gá»“m há»‡ thá»‘ng node, text vÃ  toÃ n bá»™ asset.')}</small></span></div>
+                <div className="settings-path" title={appSettings?.projectRoot || ''}>{appSettings?.projectRoot || t('No folder connected', 'ChÆ°a káº¿t ná»‘i folder')}</div>
+                <button className="choose-folder-button" onClick={chooseProjectFolder} disabled={choosingAssetFolder}><FolderOpen size={16} /><span>{choosingAssetFolder ? t('Waiting for folder selectionâ€¦', 'Äang chá» báº¡n chá»n folder...') : t('Choose folder', 'Chá»n folder')}</span></button>
+                <p>{t('The browser displays only the folder name, not its full path. Choosing another folder switches workspaces; data in the old folder remains untouched.', 'TrÃ¬nh duyá»‡t chá»‰ cho phÃ©p hiá»ƒn thá»‹ tÃªn folder, khÃ´ng hiá»ƒn thá»‹ Ä‘Æ°á»ng dáº«n Ä‘áº§y Ä‘á»§. Chá»n folder khÃ¡c sáº½ chuyá»ƒn workspace; dá»¯ liá»‡u trong folder cÅ© váº«n Ä‘Æ°á»£c giá»¯ nguyÃªn.')}</p>
               </div>
             </section>
           </div>
