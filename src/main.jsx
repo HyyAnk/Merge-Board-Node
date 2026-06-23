@@ -1641,6 +1641,18 @@ function FlowCanvas() {
     }));
   }, [nodes, edges, renderedNodeLayoutById]);
 
+  const selectedCanvasImageIds = useMemo(
+    () => nodes.filter((node) => node.type === 'canvasImageNode' && node.selected).map((node) => node.id),
+    [nodes],
+  );
+
+  const selectedBatchInputIds = useMemo(
+    () => nodes
+      .filter((node) => ['textNode', 'imageNode', 'exampleNode', 'canvasImageNode'].includes(node.type) && node.selected)
+      .map((node) => node.id),
+    [nodes],
+  );
+
   const rememberSelectionStart = useCallback((event) => {
     if (event.button === 0) selectionPointerRef.current = { x: event.clientX, y: event.clientY };
   }, []);
@@ -2435,15 +2447,12 @@ function FlowCanvas() {
   }, [screenToFlowPosition]);
 
   const openJoinMenu = useCallback((event, node) => {
-    if (!['joinNode', 'mixerNode', 'canvasImageNode'].includes(node.type)) return;
+    if (!['joinNode', 'mixerNode', 'exampleNode', 'canvasImageNode'].includes(node.type)) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenu(null);
     setEdgeMenu(null);
     if (node.type === 'canvasImageNode') {
-      const selectedCanvasImageIds = nodes
-        .filter((item) => item.type === 'canvasImageNode' && item.selected)
-        .map((item) => item.id);
       const nodeIds = node.selected && selectedCanvasImageIds.length
         ? selectedCanvasImageIds
         : [node.id];
@@ -2463,9 +2472,9 @@ function FlowCanvas() {
       color: node.data?.color || '#8b7cf6',
       paletteOpen: false,
       x: Math.min(event.clientX, window.innerWidth - 198),
-      y: Math.min(event.clientY, window.innerHeight - (node.type === 'joinNode' ? 258 : 106)),
+      y: Math.min(event.clientY, window.innerHeight - (node.type === 'joinNode' ? 300 : 148)),
     });
-  }, [nodes]);
+  }, [selectedCanvasImageIds]);
 
   const enableJoinMove = useCallback(() => {
     if (!joinMenu?.nodeId) return;
@@ -2546,16 +2555,70 @@ function FlowCanvas() {
     showToast(t('Join Point converted to Mixer'));
   }, [joinMenu, renderedNodeLayoutById, showToast, t]);
 
-  const makeCanvasImageNode = useCallback(() => {
+  const makeCanvasImageNode = useCallback((targetType = 'imageNode') => {
     const targetIds = canvasImageMenu?.nodeIds?.length
       ? canvasImageMenu.nodeIds
       : canvasImageMenu?.nodeId
         ? [canvasImageMenu.nodeId]
-        : [];
+        : selectedCanvasImageIds;
     if (!targetIds.length) return;
     const targetIdSet = new Set(targetIds);
     setNodes((current) => current.map((node) => {
       if (!targetIdSet.has(node.id) || node.type !== 'canvasImageNode') return node;
+      const { width: _width, height: _height, measured: _measured, ...baseNode } = node;
+      const title = (node.data.fileName || t('Image', 'áº¢nh')).replace(/\.[^.]+$/, '');
+      if (targetType === 'exampleNode') {
+        return {
+          ...baseNode,
+          type: 'exampleNode',
+          data: {
+            title,
+            exampleMode: 'image',
+            image: node.data.image,
+            assetFile: node.data.assetFile,
+            fileName: node.data.fileName,
+            content: null,
+            viewMode: 'expanded',
+            color: '#10b981',
+          },
+          selected: true,
+        };
+      }
+      return {
+        ...baseNode,
+        type: 'imageNode',
+        data: {
+          title,
+          image: node.data.image,
+          assetFile: node.data.assetFile,
+          fileName: node.data.fileName,
+          viewMode: 'expanded',
+          color: '#f59e0b',
+        },
+        selected: true,
+      };
+    }));
+    setContextMenu(null);
+    setCanvasImageMenu(null);
+    const nodeLabel = targetType === 'exampleNode' ? 'Example Node' : 'Image Node';
+    showToast(targetIds.length === 1
+      ? t(`Image converted to an ${nodeLabel}`)
+      : t(`${targetIds.length} images converted to ${nodeLabel}s`));
+  }, [canvasImageMenu, selectedCanvasImageIds, showToast, t]);
+
+  const connectSelectedToNode = useCallback((targetId) => {
+    const targetNode = nodes.find((node) => node.id === targetId);
+    if (!['mixerNode', 'exampleNode', 'joinNode'].includes(targetNode?.type)) return;
+    const sourceIds = selectedBatchInputIds.filter((id) => id !== targetId);
+    if (!sourceIds.length) {
+      showToast(t('Select one or more input nodes first'), 'error');
+      return;
+    }
+
+    const convertedCanvasIds = new Set();
+    const nextNodes = nodes.map((node) => {
+      if (!sourceIds.includes(node.id) || node.type !== 'canvasImageNode') return node;
+      convertedCanvasIds.add(node.id);
       const { width: _width, height: _height, measured: _measured, ...baseNode } = node;
       const title = (node.data.fileName || t('Image', 'áº¢nh')).replace(/\.[^.]+$/, '');
       return {
@@ -2571,12 +2634,91 @@ function FlowCanvas() {
         },
         selected: true,
       };
-    }));
+    });
+    const nodeById = new Map(nextNodes.map((node) => [node.id, node]));
+    const collectSourceLineage = (nodeId, graphEdges, visited = new Set()) => {
+      if (visited.has(nodeId)) return new Set();
+      const sourceNode = nodeById.get(nodeId);
+      if (!sourceNode) return new Set();
+      if (['textNode', 'imageNode', 'exampleNode'].includes(sourceNode.type)) return new Set([sourceNode.id]);
+      const nextVisited = new Set(visited).add(nodeId);
+      const lineage = new Set();
+      graphEdges.filter((edge) => edge.target === nodeId).forEach((edge) => {
+        collectSourceLineage(edge.source, graphEdges, nextVisited).forEach((sourceId) => lineage.add(sourceId));
+      });
+      return lineage;
+    };
+    const findDuplicateInputs = (graphEdges) => {
+      const duplicates = new Map();
+      nextNodes.filter((node) => ['mixerNode', 'exampleNode', 'joinNode'].includes(node.type)).forEach((receiver) => {
+        const seenSources = new Set();
+        graphEdges.filter((edge) => edge.target === receiver.id).forEach((edge) => {
+          collectSourceLineage(edge.source, graphEdges).forEach((sourceId) => {
+            const signature = `${receiver.id}:${sourceId}`;
+            if (seenSources.has(sourceId)) duplicates.set(signature, { receiverId: receiver.id, sourceId });
+            seenSources.add(sourceId);
+          });
+        });
+      });
+      return duplicates;
+    };
+    const createsCycle = (graphEdges, start, sought, visited = new Set()) => {
+      if (start === sought) return true;
+      if (visited.has(start)) return false;
+      visited.add(start);
+      return graphEdges.filter((edge) => edge.source === start).some((edge) => createsCycle(graphEdges, edge.target, sought, visited));
+    };
+
+    let nextEdges = edges;
+    let connectedCount = 0;
+    let skippedCount = 0;
+    sourceIds.forEach((sourceId, index) => {
+      const sourceNode = nodeById.get(sourceId);
+      if (!['textNode', 'imageNode', 'exampleNode'].includes(sourceNode?.type)) {
+        skippedCount += 1;
+        return;
+      }
+      const alreadyConnected = nextEdges.some((edge) => (
+        (edge.source === sourceId && edge.target === targetId)
+        || (edge.source === targetId && edge.target === sourceId)
+      ));
+      if (alreadyConnected || createsCycle(nextEdges, targetId, sourceId)) {
+        skippedCount += 1;
+        return;
+      }
+      const currentDuplicates = findDuplicateInputs(nextEdges);
+      const proposedConnection = { source: sourceId, target: targetId };
+      const proposedDuplicates = findDuplicateInputs([...nextEdges, proposedConnection]);
+      const hasNewDuplicate = [...proposedDuplicates.keys()].some((signature) => !currentDuplicates.has(signature));
+      if (hasNewDuplicate) {
+        skippedCount += 1;
+        return;
+      }
+      const edgeId = `edge-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`;
+      nextEdges = addEdge({
+        id: edgeId,
+        source: sourceId,
+        target: targetId,
+        sourceHandle: `out-${edgeId}`,
+        targetHandle: `in-${edgeId}`,
+        type: 'beam',
+        data: { color: 'gradient' },
+      }, nextEdges);
+      connectedCount += 1;
+    });
+
+    if (!connectedCount) {
+      showToast(t('No selected inputs could be connected'), 'error');
+      return;
+    }
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    setContextMenu(null);
+    setJoinMenu(null);
     setCanvasImageMenu(null);
-    showToast(targetIds.length === 1
-      ? t('Image converted to an Image Node', 'ÄÃ£ chuyá»ƒn áº£nh thÃ nh Image Node')
-      : t(`${targetIds.length} images converted to Image Nodes`));
-  }, [canvasImageMenu, showToast, t]);
+    const convertedText = convertedCanvasIds.size ? ` · ${convertedCanvasIds.size} canvas image(s) converted` : '';
+    showToast(t(`Connected ${connectedCount} input(s)${convertedText}${skippedCount ? ` · ${skippedCount} skipped` : ''}`));
+  }, [edges, nodes, selectedBatchInputIds, showToast, t]);
 
   const onEdgeClick = useCallback((event, edge) => {
     event.stopPropagation();
@@ -3028,21 +3170,34 @@ function FlowCanvas() {
           )}
           {contextMenu && (
             <div className="canvas-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" aria-label={t('Add node', 'ThÃªm node')}>
-              <div className="context-menu-title"><span>{t('ADD NODE', 'THÃŠM NODE')}</span><kbd>Right click</kbd></div>
-              <button role="menuitem" onClick={() => addNode('textNode', contextMenu.flowPosition)}><span className="menu-icon blue"><Type size={15} /></span><span>Text</span><Plus size={13} /></button>
-              <button role="menuitem" onClick={() => addNode('imageNode', contextMenu.flowPosition)}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>Image</span><Plus size={13} /></button>
-              <button role="menuitem" onClick={() => addNode('mixerNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Merge size={15} /></span><span>Mixer</span><Plus size={13} /></button>
-              <button role="menuitem" onClick={() => addNode('exampleNode', contextMenu.flowPosition)}><span className="menu-icon green"><BookOpenCheck size={15} /></span><span>Example</span><Plus size={13} /></button>
-              <button role="menuitem" onClick={() => addNode('joinNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Waypoints size={15} /></span><span>Join Point</span><Plus size={13} /></button>
-              <div className="context-menu-shortcut"><span>{t('Duplicate selected node', 'NhÃ¢n báº£n node Ä‘Ã£ chá»n')}</span><kbd>Ctrl D</kbd></div>
+              {selectedCanvasImageIds.length > 0 ? (
+                <>
+                  <div className="context-menu-title"><span>{selectedCanvasImageIds.length > 1 ? `${selectedCanvasImageIds.length} SELECTED IMAGES` : 'SELECTED IMAGE'}</span><kbd>Right click</kbd></div>
+                  <button role="menuitem" onClick={() => makeCanvasImageNode('imageNode')}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>{selectedCanvasImageIds.length > 1 ? `Make ${selectedCanvasImageIds.length} Image Nodes` : 'Make Image Node'}</span><ArrowRight size={13} /></button>
+                  <button role="menuitem" onClick={() => makeCanvasImageNode('exampleNode')}><span className="menu-icon green"><BookOpenCheck size={15} /></span><span>{selectedCanvasImageIds.length > 1 ? `Make ${selectedCanvasImageIds.length} Example Nodes` : 'Make Example Node'}</span><ArrowRight size={13} /></button>
+                </>
+              ) : (
+                <>
+                  <div className="context-menu-title"><span>{t('ADD NODE', 'THÃŠM NODE')}</span><kbd>Right click</kbd></div>
+                  <button role="menuitem" onClick={() => addNode('textNode', contextMenu.flowPosition)}><span className="menu-icon blue"><Type size={15} /></span><span>Text</span><Plus size={13} /></button>
+                  <button role="menuitem" onClick={() => addNode('imageNode', contextMenu.flowPosition)}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>Image</span><Plus size={13} /></button>
+                  <button role="menuitem" onClick={() => addNode('mixerNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Merge size={15} /></span><span>Mixer</span><Plus size={13} /></button>
+                  <button role="menuitem" onClick={() => addNode('exampleNode', contextMenu.flowPosition)}><span className="menu-icon green"><BookOpenCheck size={15} /></span><span>Example</span><Plus size={13} /></button>
+                  <button role="menuitem" onClick={() => addNode('joinNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Waypoints size={15} /></span><span>Join Point</span><Plus size={13} /></button>
+                  <div className="context-menu-shortcut"><span>{t('Duplicate selected node', 'NhÃ¢n báº£n node Ä‘Ã£ chá»n')}</span><kbd>Ctrl D</kbd></div>
+                </>
+              )}
             </div>
           )}
           {joinMenu && (
-            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={joinMenu.nodeType === 'mixerNode' ? t('Mixer options') : t('Join Point options')}>
-              <div className="context-menu-title"><span>{joinMenu.nodeType === 'mixerNode' ? 'MIXER' : 'JOIN POINT'}</span><kbd>Right click</kbd></div>
+            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={joinMenu.nodeType === 'mixerNode' ? t('Mixer options') : joinMenu.nodeType === 'exampleNode' ? t('Example options') : t('Join Point options')}>
+              <div className="context-menu-title"><span>{joinMenu.nodeType === 'mixerNode' ? 'MIXER' : joinMenu.nodeType === 'exampleNode' ? 'EXAMPLE' : 'JOIN POINT'}</span><kbd>Right click</kbd></div>
+              {selectedBatchInputIds.filter((id) => id !== joinMenu.nodeId).length > 0 && (
+                <button role="menuitem" onClick={() => connectSelectedToNode(joinMenu.nodeId)}><span className="menu-icon violet"><Waypoints size={15} /></span><span>{t(`Connect ${selectedBatchInputIds.filter((id) => id !== joinMenu.nodeId).length} selected here`)}</span><ArrowRight size={13} /></button>
+              )}
               {joinMenu.nodeType === 'mixerNode' ? (
                 <button role="menuitem" onClick={convertMixerToJoin}><span className="menu-icon violet"><Waypoints size={15} /></span><span>{t('Convert to Join Point')}</span><ArrowRight size={13} /></button>
-              ) : (
+              ) : joinMenu.nodeType === 'joinNode' ? (
                 <>
                   <button role="menuitem" onClick={enableJoinMove}><span className="menu-icon violet"><MousePointer2 size={15} /></span><span>{t('Move Join Point')}</span><ArrowRight size={13} /></button>
                   <button role="menuitem" onClick={() => setJoinMenu((current) => current ? { ...current, paletteOpen: !current.paletteOpen } : null)}><span className="menu-icon violet"><Palette size={15} /></span><span>{t('Change color')}</span><ChevronDown size={13} /></button>
@@ -3053,13 +3208,14 @@ function FlowCanvas() {
                   )}
                   <button role="menuitem" onClick={convertJoinToMixer}><span className="menu-icon violet"><Merge size={15} /></span><span>{t('Convert to Mixer')}</span><ArrowRight size={13} /></button>
                 </>
-              )}
+              ) : null}
             </div>
           )}
           {canvasImageMenu && (
             <div className="canvas-context-menu canvas-image-context-menu" style={{ left: canvasImageMenu.x, top: canvasImageMenu.y }} role="menu" aria-label={t('Canvas image options', 'TÃ¹y chá»n áº£nh canvas')}>
               <div className="context-menu-title"><span>{(canvasImageMenu.nodeIds?.length || 1) > 1 ? `${canvasImageMenu.nodeIds.length} CANVAS IMAGES` : 'CANVAS IMAGE'}</span><kbd>Right click</kbd></div>
-              <button role="menuitem" onClick={makeCanvasImageNode}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>{(canvasImageMenu.nodeIds?.length || 1) > 1 ? 'Make nodes' : 'Make node'}</span><ArrowRight size={13} /></button>
+              <button role="menuitem" onClick={() => makeCanvasImageNode('imageNode')}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>{(canvasImageMenu.nodeIds?.length || 1) > 1 ? 'Make Image Nodes' : 'Make Image Node'}</span><ArrowRight size={13} /></button>
+              <button role="menuitem" onClick={() => makeCanvasImageNode('exampleNode')}><span className="menu-icon green"><BookOpenCheck size={15} /></span><span>{(canvasImageMenu.nodeIds?.length || 1) > 1 ? 'Make Example Nodes' : 'Make Example Node'}</span><ArrowRight size={13} /></button>
             </div>
           )}
           {edgeMenu && (
