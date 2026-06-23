@@ -2441,9 +2441,16 @@ function FlowCanvas() {
     setContextMenu(null);
     setEdgeMenu(null);
     if (node.type === 'canvasImageNode') {
+      const selectedCanvasImageIds = nodes
+        .filter((item) => item.type === 'canvasImageNode' && item.selected)
+        .map((item) => item.id);
+      const nodeIds = node.selected && selectedCanvasImageIds.length
+        ? selectedCanvasImageIds
+        : [node.id];
       setJoinMenu(null);
       setCanvasImageMenu({
         nodeId: node.id,
+        nodeIds,
         x: Math.min(event.clientX, window.innerWidth - 198),
         y: Math.min(event.clientY, window.innerHeight - 92),
       });
@@ -2458,7 +2465,7 @@ function FlowCanvas() {
       x: Math.min(event.clientX, window.innerWidth - 198),
       y: Math.min(event.clientY, window.innerHeight - (node.type === 'joinNode' ? 258 : 106)),
     });
-  }, []);
+  }, [nodes]);
 
   const enableJoinMove = useCallback(() => {
     if (!joinMenu?.nodeId) return;
@@ -2540,9 +2547,15 @@ function FlowCanvas() {
   }, [joinMenu, renderedNodeLayoutById, showToast, t]);
 
   const makeCanvasImageNode = useCallback(() => {
-    if (!canvasImageMenu?.nodeId) return;
+    const targetIds = canvasImageMenu?.nodeIds?.length
+      ? canvasImageMenu.nodeIds
+      : canvasImageMenu?.nodeId
+        ? [canvasImageMenu.nodeId]
+        : [];
+    if (!targetIds.length) return;
+    const targetIdSet = new Set(targetIds);
     setNodes((current) => current.map((node) => {
-      if (node.id !== canvasImageMenu.nodeId) return node;
+      if (!targetIdSet.has(node.id) || node.type !== 'canvasImageNode') return node;
       const { width: _width, height: _height, measured: _measured, ...baseNode } = node;
       const title = (node.data.fileName || t('Image', 'áº¢nh')).replace(/\.[^.]+$/, '');
       return {
@@ -2560,7 +2573,9 @@ function FlowCanvas() {
       };
     }));
     setCanvasImageMenu(null);
-    showToast(t('Image converted to an Image Node', 'ÄÃ£ chuyá»ƒn áº£nh thÃ nh Image Node'));
+    showToast(targetIds.length === 1
+      ? t('Image converted to an Image Node', 'ÄÃ£ chuyá»ƒn áº£nh thÃ nh Image Node')
+      : t(`${targetIds.length} images converted to Image Nodes`));
   }, [canvasImageMenu, showToast, t]);
 
   const onEdgeClick = useCallback((event, edge) => {
@@ -3043,8 +3058,8 @@ function FlowCanvas() {
           )}
           {canvasImageMenu && (
             <div className="canvas-context-menu canvas-image-context-menu" style={{ left: canvasImageMenu.x, top: canvasImageMenu.y }} role="menu" aria-label={t('Canvas image options', 'TÃ¹y chá»n áº£nh canvas')}>
-              <div className="context-menu-title"><span>CANVAS IMAGE</span><kbd>Right click</kbd></div>
-              <button role="menuitem" onClick={makeCanvasImageNode}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>Make node</span><ArrowRight size={13} /></button>
+              <div className="context-menu-title"><span>{(canvasImageMenu.nodeIds?.length || 1) > 1 ? `${canvasImageMenu.nodeIds.length} CANVAS IMAGES` : 'CANVAS IMAGE'}</span><kbd>Right click</kbd></div>
+              <button role="menuitem" onClick={makeCanvasImageNode}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>{(canvasImageMenu.nodeIds?.length || 1) > 1 ? 'Make nodes' : 'Make node'}</span><ArrowRight size={13} /></button>
             </div>
           )}
           {edgeMenu && (
