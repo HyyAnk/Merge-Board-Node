@@ -710,6 +710,104 @@ const ImageNode = memo(({ id, data, selected }) => {
   );
 });
 
+function ExampleImageLightbox({ open, onClose, image, title, fileName, assetFile, dimensions, revealAsset }) {
+  const t = useTranslation();
+  const [view, setView] = useState({ zoom: 1, x: 0, y: 0, panning: false });
+  const [fit, setFit] = useState({ width: 0, height: 0 });
+  const stageRef = useRef(null);
+  const dragRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setView({ zoom: 1, x: 0, y: 0, panning: false });
+    const closeOnEscape = (event) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, open]);
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!open || !stage || !dimensions.width || !dimensions.height) return undefined;
+    const updateFit = () => {
+      const viewportWidth = Math.max(1, stage.clientWidth - 32);
+      const viewportHeight = Math.max(1, stage.clientHeight - 32);
+      const scale = Math.min(1, viewportWidth / dimensions.width, viewportHeight / dimensions.height);
+      const next = { width: Math.floor(dimensions.width * scale), height: Math.floor(dimensions.height * scale) };
+      setFit((current) => current.width === next.width && current.height === next.height ? current : next);
+    };
+    updateFit();
+    const observer = new ResizeObserver(updateFit);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [dimensions.height, dimensions.width, open]);
+
+  const metrics = useCallback((zoom = view.zoom) => {
+    const stage = stageRef.current;
+    if (!stage || !dimensions.width || !dimensions.height) return null;
+    const rect = stage.getBoundingClientRect();
+    const viewportWidth = Math.max(1, rect.width - 32);
+    const viewportHeight = Math.max(1, rect.height - 32);
+    const fitScale = Math.min(1, viewportWidth / dimensions.width, viewportHeight / dimensions.height);
+    const maxZoom = Math.min(12, Math.max(1, 1 / fitScale));
+    return {
+      rect,
+      maxZoom,
+      maxX: Math.max(0, (dimensions.width * fitScale * zoom - viewportWidth) / 2),
+      maxY: Math.max(0, (dimensions.height * fitScale * zoom - viewportHeight) / 2),
+    };
+  }, [dimensions.height, dimensions.width, view.zoom]);
+  const clampPan = useCallback((x, y, zoom) => {
+    const limits = metrics(zoom);
+    if (!limits) return { x: 0, y: 0 };
+    return { x: Math.max(-limits.maxX, Math.min(limits.maxX, x)), y: Math.max(-limits.maxY, Math.min(limits.maxY, y)) };
+  }, [metrics]);
+  const onWheel = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const limits = metrics();
+    if (!limits || limits.maxZoom <= 1) return;
+    const nextZoom = Math.max(1, Math.min(limits.maxZoom, view.zoom * Math.exp(-event.deltaY * 0.0018)));
+    if (Math.abs(nextZoom - view.zoom) < 0.001) return;
+    const pointerX = event.clientX - (limits.rect.left + limits.rect.width / 2);
+    const pointerY = event.clientY - (limits.rect.top + limits.rect.height / 2);
+    const ratio = nextZoom / view.zoom;
+    const nextPan = clampPan(pointerX - (pointerX - view.x) * ratio, pointerY - (pointerY - view.y) * ratio, nextZoom);
+    setView({ zoom: nextZoom, ...nextPan, panning: false });
+  }, [clampPan, metrics, view]);
+  const beginPan = useCallback((event) => {
+    if (event.button !== 0 || view.zoom <= 1) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dragRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, x: view.x, y: view.y };
+    setView((current) => ({ ...current, panning: true }));
+  }, [view]);
+  const movePan = useCallback((event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const nextPan = clampPan(drag.x + event.clientX - drag.clientX, drag.y + event.clientY - drag.clientY, view.zoom);
+    setView((current) => ({ ...current, ...nextPan, panning: true }));
+  }, [clampPan, view.zoom]);
+  const finishPan = useCallback((event) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    setView((current) => ({ ...current, panning: false }));
+  }, []);
+
+  if (!open) return null;
+  return createPortal(
+    <div className="image-lightbox" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="image-lightbox-panel" role="dialog" aria-modal="true" aria-label={t('Large image preview')}>
+        <header><span><BookOpenCheck size={16} /><strong>{fileName || title}</strong></span><button onClick={onClose} aria-label={t('Close')}><X size={18} /></button></header>
+        <div ref={stageRef} className={`image-lightbox-stage ${view.zoom > 1 ? 'is-zoomed' : ''} ${view.panning ? 'is-panning' : ''}`} onWheel={onWheel} onPointerDown={beginPan} onPointerMove={movePan} onPointerUp={finishPan} onPointerCancel={finishPan} onDoubleClick={() => setView({ zoom: 1, x: 0, y: 0, panning: false })}>
+          <img src={image} alt={title || fileName} draggable="false" style={{ width: fit.width || undefined, height: fit.height || undefined, maxWidth: fit.width ? 'none' : undefined, maxHeight: fit.height ? 'none' : undefined, transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }} />
+        </div>
+        <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px · {t('Zoom')} {Math.round(view.zoom * 100)}%{view.zoom > 1 ? ` · ${t('drag to pan')}` : ''}</span>{assetFile && <button onClick={() => revealAsset(assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer')}</button>}</footer>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 const MixerNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
   const { focusNode } = useContext(NodeActionsContext);
@@ -773,9 +871,11 @@ const MixerNode = memo(({ id, data, selected }) => {
 
 const ExampleNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
-  const { uploadImage, showToast, focusNode, updateNode } = useContext(NodeActionsContext);
+  const { uploadImage, showToast, focusNode, updateNode, revealAsset } = useContext(NodeActionsContext);
   const [uploading, setUploading] = useState(false);
   const [editingText, setEditingText] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [imageDimensions, setImageDimensions] = useState({ width: data.imageWidth || 0, height: data.imageHeight || 0 });
   const textEditorRef = useRef(null);
   const viewMode = data.viewMode || 'expanded';
   const inputTitles = data.inputTitles || [];
@@ -806,7 +906,9 @@ const ExampleNode = memo(({ id, data, selected }) => {
     setEditingText(true);
     requestAnimationFrame(() => textEditorRef.current?.focus());
   };
+  const closePreview = useCallback(() => setPreviewOpen(false), []);
   return (
+    <>
     <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`example-card mode-${viewMode}`}>
       <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
       <NodeHeader icon={BookOpenCheck} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
@@ -823,8 +925,8 @@ const ExampleNode = memo(({ id, data, selected }) => {
           </div>
         )}
         {exampleMode === 'image' && data.image ? (
-          <div className="image-preview example-preview">
-            <img src={data.image} alt={data.title || t('Example image', 'áº¢nh example')} draggable="false" onLoad={(event) => { const imageWidth = event.currentTarget.naturalWidth; const imageHeight = event.currentTarget.naturalHeight; if (imageWidth !== data.imageWidth || imageHeight !== data.imageHeight) updateNode(id, { imageWidth, imageHeight }); }} />
+          <div className="image-preview example-preview" onDoubleClick={(event) => { event.stopPropagation(); setPreviewOpen(true); }}>
+            <img src={data.image} alt={data.title || t('Example image', 'áº¢nh example')} draggable="false" onLoad={(event) => { const imageWidth = event.currentTarget.naturalWidth; const imageHeight = event.currentTarget.naturalHeight; setImageDimensions({ width: imageWidth, height: imageHeight }); if (imageWidth !== data.imageWidth || imageHeight !== data.imageHeight) updateNode(id, { imageWidth, imageHeight }); }} />
             {selected && <label className="replace-image compact-upload-button nodrag" title={t('Replace example image')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
             <div className="example-resource-copy"><CopyButton value={data.image} kind="image" /></div>
           </div>
@@ -863,6 +965,8 @@ const ExampleNode = memo(({ id, data, selected }) => {
       </div>
       <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
     </NodeShell>
+    <ExampleImageLightbox open={previewOpen} onClose={closePreview} image={data.image} title={data.title} fileName={data.fileName} assetFile={data.assetFile} dimensions={imageDimensions} revealAsset={revealAsset} />
+    </>
   );
 });
 
