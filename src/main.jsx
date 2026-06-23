@@ -277,9 +277,19 @@ function bridgeDeletedJoinPoints(nodes, graphEdges, deletedNodeIds) {
   return [...remainingEdges, ...bridgedEdges];
 }
 
+function compareByInputTitle(first, second) {
+  const titleOrder = String(first?.title || '').localeCompare(String(second?.title || ''), undefined, { numeric: true, sensitivity: 'base' });
+  if (titleOrder) return titleOrder;
+  return String(first?.id || first?.sourceId || '').localeCompare(String(second?.id || second?.sourceId || ''), undefined, { numeric: true, sensitivity: 'base' });
+}
+
 const INPUT_KIND_PRIORITY = { example: 0, image: 1, text: 2 };
+
 function sortInputTitles(items) {
-  return [...items].sort((first, second) => (INPUT_KIND_PRIORITY[first.kind] ?? 99) - (INPUT_KIND_PRIORITY[second.kind] ?? 99));
+  return [...items].sort((first, second) => {
+    const kindOrder = (INPUT_KIND_PRIORITY[first.kind] ?? 99) - (INPUT_KIND_PRIORITY[second.kind] ?? 99);
+    return kindOrder || compareByInputTitle(first, second);
+  });
 }
 
 function createGraphSnapshot(nodes, edges) {
@@ -424,7 +434,7 @@ function PortStack({ ports = [], type, position, color, compact = false }) {
   });
 }
 
-function NodeHeader({ icon: Icon, title, nodeId, viewMode = 'expanded', color = NODE_COLORS[0] }) {
+function NodeHeader({ icon: Icon, title, nodeId, viewMode = 'expanded', color = NODE_COLORS[0], hideTitle = false }) {
   const t = useTranslation();
   const { updateNode } = useContext(NodeActionsContext);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -439,15 +449,17 @@ function NodeHeader({ icon: Icon, title, nodeId, viewMode = 'expanded', color = 
   }, [paletteOpen]);
   return (
     <header className="node-header">
-      <div className="node-floating-title nodrag">
-        <Icon size={14} strokeWidth={2.4} />
-        <input
-          className="node-title"
-          value={title}
-          aria-label={t('Node name', 'TÃªn node')}
-          onChange={(event) => updateNode(nodeId, { title: event.target.value })}
-        />
-      </div>
+      {!hideTitle && (
+        <div className="node-floating-title nodrag">
+          <Icon size={14} strokeWidth={2.4} />
+          <input
+            className="node-title"
+            value={title}
+            aria-label={t('Node name')}
+            onChange={(event) => updateNode(nodeId, { title: event.target.value })}
+          />
+        </div>
+      )}
       <div ref={actionsRef} className="node-actions nodrag" onMouseLeave={() => setPaletteOpen(false)}>
         <div className="node-color-picker">
           <button className="color-trigger" onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose node color', 'Chá»n mÃ u node')} title={t('Choose node color', 'Chá»n mÃ u node')}><Palette size={14} /></button>
@@ -735,7 +747,7 @@ const MixerNode = memo(({ id, data, selected }) => {
     <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`mixer-card mode-${viewMode}`}>
       <div className="mixer-port-anchor">
         <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
-        <NodeHeader icon={Merge} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
+        <NodeHeader icon={Merge} title={data.title} nodeId={id} viewMode={viewMode} color={color} hideTitle />
         <div className="mixer-content nowheel">
           {!resources.length && (
             <div className="empty-mixer"><Zap size={23} /><strong>{t('Connect resources', 'Káº¿t ná»‘i tÃ i nguyÃªn')}</strong><span>{t('Drag a connector from Text or Image into the left port.', 'KÃ©o dÃ¢y tá»« Text hoáº·c Image vÃ o cá»•ng bÃªn trÃ¡i.')}</span></div>
@@ -763,32 +775,81 @@ const ExampleNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
   const { uploadImage, showToast, focusNode, updateNode } = useContext(NodeActionsContext);
   const [uploading, setUploading] = useState(false);
+  const [editingText, setEditingText] = useState(false);
+  const textEditorRef = useRef(null);
   const viewMode = data.viewMode || 'expanded';
   const inputTitles = data.inputTitles || [];
   const inputImageCount = inputTitles.filter((item) => item.kind === 'image' || item.kind === 'example').length;
   const inputTextCount = inputTitles.filter((item) => item.kind === 'text').length;
   const color = data.color || '#10b981';
+  const exampleText = data.content || '';
+  const exampleMode = data.exampleMode || (data.image ? 'image' : exampleText ? 'text' : '');
   const onFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) return showToast(t('Please choose a valid image file', 'Vui lÃ²ng chá»n Ä‘Ãºng Ä‘á»‹nh dáº¡ng áº£nh'), 'error');
     setUploading(true);
-    try { await uploadImage(id, file); }
+    try {
+      await uploadImage(id, file);
+      updateNode(id, { exampleMode: 'image', content: null });
+    }
     finally { setUploading(false); event.target.value = ''; }
+  };
+  useLayoutEffect(() => {
+    if (!textEditorRef.current || viewMode !== 'expanded') return;
+    textEditorRef.current.style.height = 'auto';
+    textEditorRef.current.style.height = `${textEditorRef.current.scrollHeight}px`;
+  }, [editingText, exampleText, viewMode]);
+  const beginTextEditing = (event) => {
+    event?.stopPropagation();
+    if (!exampleMode) updateNode(id, { exampleMode: 'text', image: '', assetFile: '', fileName: '', imageWidth: 0, imageHeight: 0 });
+    setEditingText(true);
+    requestAnimationFrame(() => textEditorRef.current?.focus());
   };
   return (
     <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`example-card mode-${viewMode}`}>
       <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
       <NodeHeader icon={BookOpenCheck} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
       <div className="example-content nowheel">
-        {data.image ? (
+        {!exampleMode && (
+          <div className="example-content-actions nodrag">
+            <label title={uploading ? t('Saving…') : t('Upload example image')}>
+              <Upload size={13} /><span>{t('Upload Image')}</span>
+              <input type="file" accept="image/*" onChange={onFile} disabled={uploading} />
+            </label>
+            <button type="button" onClick={beginTextEditing} title={t('Write example text')}>
+              <FileText size={13} /><span>{t('Write Text')}</span>
+            </button>
+          </div>
+        )}
+        {exampleMode === 'image' && data.image ? (
           <div className="image-preview example-preview">
             <img src={data.image} alt={data.title || t('Example image', 'áº¢nh example')} draggable="false" onLoad={(event) => { const imageWidth = event.currentTarget.naturalWidth; const imageHeight = event.currentTarget.naturalHeight; if (imageWidth !== data.imageWidth || imageHeight !== data.imageHeight) updateNode(id, { imageWidth, imageHeight }); }} />
-            {selected && <label className="replace-image compact-upload-button nodrag" title={t('Replace example image', 'Äá»•i áº£nh example')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
+            {selected && <label className="replace-image compact-upload-button nodrag" title={t('Replace example image')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
+            <div className="example-resource-copy"><CopyButton value={data.image} kind="image" /></div>
           </div>
-        ) : (
-          <div className="empty-image-surface"><label className="replace-image compact-upload-button nodrag" title={uploading ? t('Savingâ€¦', 'Äang sao lÆ°u...') : t('Upload example image', 'Táº£i áº£nh example lÃªn')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label></div>
+        ) : exampleMode === 'image' ? (
+          <div className="empty-image-surface"><label className="replace-image compact-upload-button nodrag" title={uploading ? t('Saving…') : t('Upload example image')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label></div>
+        ) : null}
+        {exampleMode === 'text' && (
+          <div className="example-text-surface">
+            {editingText ? (
+              <textarea
+                ref={textEditorRef}
+                className="example-text-editor nodrag nowheel"
+                value={exampleText}
+                placeholder={t('Write an example…')}
+                onChange={(event) => updateNode(id, { content: event.target.value })}
+                onBlur={() => setEditingText(false)}
+                autoFocus
+              />
+            ) : (
+              <div ref={textEditorRef} className={`example-text-display ${exampleText ? '' : 'is-empty'}`} onDoubleClick={beginTextEditing}>{exampleText || t('Double-click to write example text…')}</div>
+            )}
+            {exampleText && <div className="example-resource-copy"><CopyButton value={exampleText} /></div>}
+          </div>
         )}
+        {!exampleMode && <div className="example-content-empty">{t('Choose this Example node type once. The selected type will remain fixed.')}</div>}
         <div className="mixer-footer-note example-resource-count"><span>{inputImageCount} {t('images', 'áº£nh')}</span><span>{inputTextCount} text</span></div>
         <section className="example-inputs">
           <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE · {inputTitles.length}</div>
@@ -800,7 +861,6 @@ const ExampleNode = memo(({ id, data, selected }) => {
           )) : <div className="example-empty">{t('Connect Text, Image, or Mixer to the left port.', 'Cáº¯m Text, Image hoáº·c Mixer vÃ o cá»•ng bÃªn trÃ¡i.')}</div>}
         </section>
       </div>
-      {data.image && <div className="node-border-copy"><CopyButton value={data.image} kind="image" /></div>}
       <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
     </NodeShell>
   );
@@ -830,10 +890,13 @@ const CanvasImageNode = memo(({ id, data, selected }) => {
 const JoinNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
   const color = data.color || '#8b7cf6';
+  const reversed = Boolean(data.joinReversed);
+  const updateNodeInternals = useUpdateNodeInternals();
+  useLayoutEffect(() => { updateNodeInternals(id); }, [id, reversed, updateNodeInternals]);
   return (
-    <div className={`join-point ${selected ? 'is-selected' : ''} ${data.moveEnabled ? 'is-move-enabled' : ''}`} style={{ '--join-color': color }} title={data.moveEnabled ? t('Drag to move Join Point', 'KÃ©o Ä‘á»ƒ di chuyá»ƒn Join Point') : 'Join Point'}>
-      <Handle id="join-in" type="target" position={Position.Left} className="join-unified-handle join-target-zone" aria-label={t('Join Point input', 'Äáº§u nháº­n Join Point')} title={t('Input', 'Äáº§u nháº­n')} />
-      <Handle id="join-out" type="source" position={Position.Right} className="join-unified-handle join-source-zone" aria-label={t('Join Point output', 'Äáº§u ra Join Point')} title={t('Output', 'Äáº§u ra')} />
+    <div className={`join-point ${reversed ? 'is-reversed' : ''} ${selected ? 'is-selected' : ''} ${data.moveEnabled ? 'is-move-enabled' : ''}`} style={{ '--join-color': color }} title={data.moveEnabled ? t('Drag to move Join Point') : reversed ? t('Join Point · input right, output left') : t('Join Point · input left, output right')}>
+      <Handle id="join-in" type="target" position={reversed ? Position.Right : Position.Left} className={`join-unified-handle join-target-zone ${reversed ? 'is-right' : 'is-left'}`} aria-label={t('Join Point input')} title={t('Input')} />
+      <Handle id="join-out" type="source" position={reversed ? Position.Left : Position.Right} className={`join-unified-handle join-source-zone ${reversed ? 'is-left' : 'is-right'}`} aria-label={t('Join Point output')} title={t('Output')} />
       <Waypoints size={16} strokeWidth={2.6} />
     </div>
   );
@@ -845,7 +908,9 @@ const SectionNode = memo(({ id, data, selected }) => {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const actionsRef = useRef(null);
   const color = data.color || '#3b82f6';
+  const sectionOpacity = Math.max(0, Math.min(1, Number(data.opacity ?? 0.5)));
   const titleScale = Math.min(20, Math.max(1, 1 / (data.zoom || 1)));
+  const resizeScale = Math.min(10, Math.max(1, 1 / Math.max(data.zoom || 1, 0.05)));
 
   useEffect(() => {
     if (!paletteOpen) return undefined;
@@ -858,7 +923,7 @@ const SectionNode = memo(({ id, data, selected }) => {
   }, [paletteOpen]);
 
   return (
-    <section className={`section-frame ${selected ? 'is-selected' : ''}`} style={{ width: data.width || 420, height: data.height || 260, '--section-color': color }}>
+    <section className={`section-frame ${selected ? 'is-selected' : ''}`} style={{ width: data.width || 420, height: data.height || 260, '--section-color': color, '--section-opacity': `${Math.round(sectionOpacity * 100)}%`, '--section-resize-scale': resizeScale }}>
       <NodeNoteControl nodeId={id} note={data.note} color={color} selected={selected} />
       <NodeResizer
         isVisible={selected}
@@ -872,6 +937,12 @@ const SectionNode = memo(({ id, data, selected }) => {
       <div className="section-title-wrap nodrag" style={{ transform: `scale(${titleScale})` }}>
         <input value={data.title || 'Section'} onChange={(event) => updateNode(id, { title: event.target.value })} aria-label={t('Section name', 'TÃªn Section')} />
       </div>
+      {selected && !data?.relatedHighlighted && (
+        <label className="section-opacity-control nodrag" title={t('Section opacity')} onPointerDown={(event) => event.stopPropagation()}>
+          <input type="range" min="0" max="100" step="5" value={Math.round(sectionOpacity * 100)} onChange={(event) => updateNode(id, { opacity: Number(event.target.value) / 100 })} aria-label={t('Section opacity')} />
+          <span>{Math.round(sectionOpacity * 100)}%</span>
+        </label>
+      )}
       {selected && !data?.relatedHighlighted && (
         <div className="section-actions nodrag" ref={actionsRef}>
           <button onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose Section color', 'Chá»n mÃ u Section')} title={t('Choose Section color', 'Chá»n mÃ u Section')}><Palette size={14} /></button>
@@ -1023,9 +1094,9 @@ function routeMidpoint(points) {
   return points[Math.floor(points.length / 2)];
 }
 
-function makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, sourceLead = 28, targetLead = 28) {
-  const sourceStub = { x: sourcePoint.x + sourceLead, y: sourcePoint.y };
-  const targetStub = { x: targetPoint.x - targetLead, y: targetPoint.y };
+function makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, sourceLead = 28, targetLead = 28, sourceDirection = 1, targetDirection = -1) {
+  const sourceStub = { x: sourcePoint.x + sourceLead * sourceDirection, y: sourcePoint.y };
+  const targetStub = { x: targetPoint.x + targetLead * targetDirection, y: targetPoint.y };
   const middleRoute = routeAroundNodes(sourceStub, targetStub, obstacles);
   if (!middleRoute) return null;
   return [sourcePoint, sourceStub, ...middleRoute.slice(1, -1), targetStub, targetPoint]
@@ -1169,12 +1240,12 @@ const BeamEdge = memo(({
     const obstacles = data?.routingObstacles || [];
     const plannedRoute = data?.routingComputed
       ? data?.routedPoints
-      : (data?.routedPoints || makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead));
+      : (data?.routedPoints || makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead, data?.sourceDirection, data?.targetDirection));
     if (!plannedRoute) return getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 18 }).slice(0, 3);
     let route = plannedRoute.map((point, index) => index === 0 ? sourcePoint : index === plannedRoute.length - 1 ? targetPoint : point);
     const hasDiagonal = route.slice(1).some((point, index) => point.x !== route[index].x && point.y !== route[index].y);
     if (hasDiagonal) {
-      const correctedRoute = makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead);
+      const correctedRoute = makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead, data?.sourceDirection, data?.targetDirection);
       if (!correctedRoute) return getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 18 }).slice(0, 3);
       route = correctedRoute;
     }
@@ -1422,6 +1493,49 @@ function FlowCanvas() {
     return () => canvas.removeEventListener('wheel', zoomSectionCanvas, { capture: true });
   }, [getViewport, setViewport, toolMode]);
   const renderedNodeLayoutById = useMemo(() => new Map(renderedNodeLayout.map((node) => [node.id, node])), [renderedNodeLayout]);
+
+  const joinReversedById = useMemo(() => {
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const incomingByTarget = new Map();
+    edges.forEach((edge) => {
+      if (!incomingByTarget.has(edge.target)) incomingByTarget.set(edge.target, []);
+      incomingByTarget.get(edge.target).push(edge);
+    });
+    const lineageCache = new Map();
+    const collectInputSourceIds = (targetId, visiting = new Set()) => {
+      if (lineageCache.has(targetId)) return lineageCache.get(targetId);
+      if (visiting.has(targetId)) return [];
+      const nextVisiting = new Set(visiting).add(targetId);
+      const sourceIds = (incomingByTarget.get(targetId) || []).flatMap((edge) => {
+        const source = nodeById.get(edge.source);
+        if (!source) return [];
+        if (['textNode', 'imageNode', 'exampleNode'].includes(source.type)) return [source.id];
+        if (['mixerNode', 'joinNode'].includes(source.type)) return collectInputSourceIds(source.id, nextVisiting);
+        return [];
+      });
+      const uniqueIds = [...new Set(sourceIds)];
+      lineageCache.set(targetId, uniqueIds);
+      return uniqueIds;
+    };
+    const centerX = (node) => {
+      const layout = renderedNodeLayoutById.get(node.id);
+      const width = layout?.width || node.measured?.width || node.width || (node.type === 'joinNode' ? 54 : 292);
+      return (layout?.x ?? node.position?.x ?? 0) + width / 2;
+    };
+    return new Map(nodes.filter((node) => node.type === 'joinNode').map((joinNode) => {
+      const joinCenterX = centerX(joinNode);
+      const inputSources = collectInputSourceIds(joinNode.id);
+      const rightCount = inputSources.filter((sourceId) => {
+        const source = nodeById.get(sourceId);
+        return source && centerX(source) > joinCenterX;
+      }).length;
+      const leftCount = inputSources.filter((sourceId) => {
+        const source = nodeById.get(sourceId);
+        return source && centerX(source) < joinCenterX;
+      }).length;
+      return [joinNode.id, rightCount > leftCount];
+    }));
+  }, [nodes, edges, renderedNodeLayoutById]);
 
   const rememberSelectionStart = useCallback((event) => {
     if (event.button === 0) selectionPointerRef.current = { x: event.clientX, y: event.clientY };
@@ -1844,17 +1958,51 @@ function FlowCanvas() {
       }
       if (!files.length) {
         const text = event.clipboardData?.getData('text/plain');
+        const selectedExampleNode = nodes.find((node) => node.selected && node.type === 'exampleNode');
+        if (selectedExampleNode && String(text || '').trim()) {
+          event.preventDefault();
+          const exampleMode = selectedExampleNode.data?.exampleMode
+            || (selectedExampleNode.data?.image ? 'image' : selectedExampleNode.data?.content?.trim() ? 'text' : '');
+          if (exampleMode === 'image') {
+            showToast(t('This Example node is locked to Image mode'), 'error');
+            return;
+          }
+          updateNode(selectedExampleNode.id, {
+            exampleMode: 'text',
+            content: String(text).trim(),
+            image: '',
+            assetFile: '',
+            fileName: '',
+            imageWidth: 0,
+            imageHeight: 0,
+          });
+          showToast(t('Text pasted into the Example node'));
+          return;
+        }
         if (addTextNodeFromClipboard(text)) event.preventDefault();
         return;
       }
       event.preventDefault();
+      const selectedExampleNode = nodes.find((node) => node.selected && node.type === 'exampleNode');
+      if (selectedExampleNode) {
+        const exampleMode = selectedExampleNode.data?.exampleMode
+          || (selectedExampleNode.data?.image ? 'image' : selectedExampleNode.data?.content?.trim() ? 'text' : '');
+        if (exampleMode === 'text') {
+          showToast(t('This Example node is locked to Text mode'), 'error');
+          return;
+        }
+        await uploadImage(selectedExampleNode.id, files[0]);
+        updateNode(selectedExampleNode.id, { exampleMode: 'image', content: null });
+        showToast(t('Image pasted into the Example node'));
+        return;
+      }
       const selectedImageNode = nodes.find((node) => node.selected && node.type === 'imageNode');
       if (selectedImageNode) await uploadImage(selectedImageNode.id, files[0]);
       else await addCanvasImages(files);
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [addCanvasImages, addTextNodeFromClipboard, nodes, uploadImage]);
+  }, [addCanvasImages, addTextNodeFromClipboard, nodes, showToast, t, updateNode, uploadImage]);
 
   const removeNode = useCallback((id) => {
     setNodes((current) => current.filter((node) => node.id !== id));
@@ -1998,16 +2146,18 @@ function FlowCanvas() {
 
   const addNode = useCallback((type, requestedPosition = null) => {
     const id = `${type}-${Date.now()}`;
-    const position = requestedPosition || screenToFlowPosition({ x: window.innerWidth / 2 + 80, y: window.innerHeight / 2 });
+    const basePosition = requestedPosition || screenToFlowPosition({ x: window.innerWidth / 2 + 80, y: window.innerHeight / 2 });
+    const position = type === 'joinNode' ? { x: basePosition.x - 22, y: basePosition.y - 22 } : basePosition;
     const defaults = {
       textNode: { title: t('New Text', 'Text má»›i'), content: '', viewMode: 'expanded', color: '#3b82f6' },
       imageNode: { title: t('New Image', 'áº¢nh má»›i'), image: '', fileName: '', viewMode: 'expanded', color: '#f59e0b' },
       mixerNode: { title: t('New Mixer', 'Mixer má»›i'), viewMode: 'expanded', color: '#7c6cf2' },
-      exampleNode: { title: t('Example Node', 'Node Example'), image: '', fileName: '', viewMode: 'expanded', color: '#10b981' },
+      exampleNode: { title: t('Example Node'), exampleMode: '', image: '', fileName: '', content: '', viewMode: 'expanded', color: '#10b981' },
+      joinNode: { color: '#8b7cf6' },
     };
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), { id, type, position, data: defaults[type], selected: true }]);
     setContextMenu(null);
-    const label = type === 'textNode' ? 'Text' : type === 'imageNode' ? 'Image' : type === 'mixerNode' ? 'Mixer' : t('Example Node', 'Node Example');
+    const label = type === 'textNode' ? 'Text' : type === 'imageNode' ? 'Image' : type === 'mixerNode' ? 'Mixer' : type === 'joinNode' ? 'Join Point' : t('Example Node');
     showToast(t(`Added ${label}`, `ÄÃ£ thÃªm ${label}`));
   }, [screenToFlowPosition, showToast, t]);
 
@@ -2093,7 +2243,7 @@ function FlowCanvas() {
       if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'v') {
         event.preventDefault(); setToolMode('select'); setSectionDraft(null); return;
       }
-      if (event.shiftKey && !event.ctrlKey && !event.metaKey && event.key.toLowerCase() === 's') {
+      if (!event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 's') {
         event.preventDefault(); setToolMode('section'); setContextMenu(null); setEdgeMenu(null); return;
       }
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'd') return;
@@ -2110,7 +2260,7 @@ function FlowCanvas() {
     setJoinMenu(null);
     setCanvasImageMenu(null);
     const menuWidth = 188;
-    const menuHeight = 222;
+    const menuHeight = 268;
     setContextMenu({
       x: Math.min(event.clientX, window.innerWidth - menuWidth - 10),
       y: Math.min(event.clientY, window.innerHeight - menuHeight - 10),
@@ -2157,6 +2307,7 @@ function FlowCanvas() {
         color,
         width: Math.abs(endFlow.x - sectionDraft.startFlow.x),
         height: Math.abs(endFlow.y - sectionDraft.startFlow.y),
+        opacity: 0.2,
       },
       selected: true,
     }]);
@@ -2180,7 +2331,7 @@ function FlowCanvas() {
   }, [screenToFlowPosition]);
 
   const openJoinMenu = useCallback((event, node) => {
-    if (!['joinNode', 'canvasImageNode'].includes(node.type)) return;
+    if (!['joinNode', 'mixerNode', 'canvasImageNode'].includes(node.type)) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenu(null);
@@ -2197,10 +2348,11 @@ function FlowCanvas() {
     setCanvasImageMenu(null);
     setJoinMenu({
       nodeId: node.id,
+      nodeType: node.type,
       color: node.data?.color || '#8b7cf6',
       paletteOpen: false,
       x: Math.min(event.clientX, window.innerWidth - 198),
-      y: Math.min(event.clientY, window.innerHeight - 218),
+      y: Math.min(event.clientY, window.innerHeight - (node.type === 'joinNode' ? 258 : 106)),
     });
   }, []);
 
@@ -2218,6 +2370,70 @@ function FlowCanvas() {
     setJoinMenu(null);
     showToast(t('Join Point color updated', 'ÄÃ£ Ä‘á»•i mÃ u Join Point'));
   }, [joinMenu, showToast, updateNode, t]);
+
+  const convertMixerToJoin = useCallback(() => {
+    if (!joinMenu?.nodeId || joinMenu.nodeType !== 'mixerNode') return;
+    const layout = renderedNodeLayoutById.get(joinMenu.nodeId);
+    setNodes((current) => current.map((node) => {
+      if (node.id !== joinMenu.nodeId) return node;
+      const { measured: _measured, width: _width, height: _height, ...baseNode } = node;
+      const currentWidth = layout?.width || node.measured?.width || 322;
+      const currentHeight = layout?.height || node.measured?.height || 180;
+      return {
+        ...baseNode,
+        type: 'joinNode',
+        position: {
+          x: node.position.x + (currentWidth - 44) / 2,
+          y: node.position.y + (currentHeight - 44) / 2,
+        },
+        data: { ...node.data, color: node.data?.color || '#7c6cf2' },
+        selected: true,
+      };
+    }));
+    setEdges((current) => current.map((edge) => ({
+      ...edge,
+      sourceHandle: edge.source === joinMenu.nodeId ? 'join-out' : edge.sourceHandle,
+      targetHandle: edge.target === joinMenu.nodeId ? 'join-in' : edge.targetHandle,
+    })));
+    routeCacheRef.current.clear();
+    setJoinMenu(null);
+    showToast(t('Mixer converted to Join Point'));
+  }, [joinMenu, renderedNodeLayoutById, showToast, t]);
+
+  const convertJoinToMixer = useCallback(() => {
+    if (!joinMenu?.nodeId || joinMenu.nodeType !== 'joinNode') return;
+    const layout = renderedNodeLayoutById.get(joinMenu.nodeId);
+    setNodes((current) => current.map((node) => {
+      if (node.id !== joinMenu.nodeId) return node;
+      const { measured: _measured, width: _width, height: _height, ...baseNode } = node;
+      const currentWidth = layout?.width || node.measured?.width || 44;
+      const currentHeight = layout?.height || node.measured?.height || 44;
+      return {
+        ...baseNode,
+        type: 'mixerNode',
+        position: {
+          x: node.position.x + (currentWidth - 322) / 2,
+          y: node.position.y + (currentHeight - 160) / 2,
+        },
+        data: {
+          ...node.data,
+          title: node.data?.title || t('Mixer'),
+          viewMode: node.data?.viewMode || 'expanded',
+          color: node.data?.color || '#7c6cf2',
+        },
+        selected: true,
+      };
+    }));
+    setEdges((current) => current.map((edge) => ({
+      ...edge,
+      sourceHandle: edge.source === joinMenu.nodeId ? `out-${edge.id}` : edge.sourceHandle,
+      targetHandle: edge.target === joinMenu.nodeId ? `in-${edge.id}` : edge.targetHandle,
+    })));
+    setMovableJoinId((current) => current === joinMenu.nodeId ? null : current);
+    routeCacheRef.current.clear();
+    setJoinMenu(null);
+    showToast(t('Join Point converted to Mixer'));
+  }, [joinMenu, renderedNodeLayoutById, showToast, t]);
 
   const makeCanvasImageNode = useCallback(() => {
     if (!canvasImageMenu?.nodeId) return;
@@ -2382,9 +2598,11 @@ function FlowCanvas() {
             : [];
         }
         if (source.type === 'exampleNode') {
-          return source.data.image
-            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color, imageWidth: source.data.imageWidth, imageHeight: source.data.imageHeight }]
-            : [];
+          const exampleResources = [];
+          const sourceMode = source.data.exampleMode || (source.data.image ? 'image' : source.data.content?.trim() ? 'text' : '');
+          if (sourceMode === 'image' && source.data.image) exampleResources.push({ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color, imageWidth: source.data.imageWidth, imageHeight: source.data.imageHeight });
+          if (sourceMode === 'text' && source.data.content?.trim()) exampleResources.push({ sourceId: source.id, kind: 'text', title: source.data.title, value: source.data.content, sourceColor: source.data.color });
+          return exampleResources;
         }
         if (['mixerNode', 'joinNode'].includes(source.type)) return collectResources(source.id, nextVisited);
         return [];
@@ -2414,7 +2632,7 @@ function FlowCanvas() {
         .filter((edge) => edge.source === node.id)
         .map((edge) => ({ id: edge.sourceHandle || `out-${edge.id}`, color: (edge.data?.color || 'gradient') === 'gradient' ? (node.data?.color || NODE_COLORS[0]) : edge.data.color, orderY: getNodeCenterY(edge.target) }))
         .sort((a, b) => a.orderY - b.orderY || a.id.localeCompare(b.id));
-      const nodeData = { ...node.data, inputPorts, outputPorts, moveEnabled: node.id === movableJoinId };
+      const nodeData = { ...node.data, inputPorts, outputPorts, moveEnabled: node.id === movableJoinId, joinReversed: joinReversedById.get(node.id) || false };
       if (node.type === 'sectionNode') return { ...node, zIndex: -1000, data: { ...node.data, zoom: viewportZoom } };
       if (node.type === 'exampleNode') {
         const collected = collectInputNodes(node.id);
@@ -2426,8 +2644,8 @@ function FlowCanvas() {
       const inputTitles = sortInputTitles(collectedInputs.filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index));
       const collected = collectResources(node.id);
       const unique = collected.filter((resource, index, all) => all.findIndex((item) => item.sourceId === resource.sourceId && item.kind === resource.kind) === index);
-      const images = unique.filter((resource) => resource.kind === 'image');
-      const texts = unique.filter((resource) => resource.kind === 'text' && resource.value?.trim());
+      const images = unique.filter((resource) => resource.kind === 'image').sort(compareByInputTitle);
+      const texts = unique.filter((resource) => resource.kind === 'text' && resource.value?.trim()).sort(compareByInputTitle);
       const combinedText = texts.length ? [{
         sourceId: texts.map((resource) => resource.sourceId).join('-'),
         kind: 'text',
@@ -2438,7 +2656,7 @@ function FlowCanvas() {
       }] : [];
       return { ...node, data: { ...nodeData, resources: [...images, ...combinedText], resourceCount: unique.length, inputTitles } };
     });
-  }, [nodes, edges, viewportZoom, movableJoinId, renderedNodeLayoutById, t]);
+  }, [nodes, edges, viewportZoom, movableJoinId, renderedNodeLayoutById, joinReversedById, t]);
 
   const displayEdges = useMemo(() => {
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -2465,12 +2683,43 @@ function FlowCanvas() {
     };
     const sourceEdgesByNode = new Map();
     const targetEdgesByNode = new Map();
+    const incidentEdgesByNode = new Map();
     edges.forEach((edge) => {
       if (!sourceEdgesByNode.has(edge.source)) sourceEdgesByNode.set(edge.source, []);
       if (!targetEdgesByNode.has(edge.target)) targetEdgesByNode.set(edge.target, []);
       sourceEdgesByNode.get(edge.source).push(edge);
       targetEdgesByNode.get(edge.target).push(edge);
+      if (!incidentEdgesByNode.has(edge.source)) incidentEdgesByNode.set(edge.source, []);
+      if (!incidentEdgesByNode.has(edge.target)) incidentEdgesByNode.set(edge.target, []);
+      incidentEdgesByNode.get(edge.source).push(edge);
+      incidentEdgesByNode.get(edge.target).push(edge);
     });
+    const relatedEdgeIds = new Set();
+    const highlightQueue = [];
+    selectedNodeIds.forEach((nodeId) => {
+      (incidentEdgesByNode.get(nodeId) || []).forEach((edge) => {
+        relatedEdgeIds.add(edge.id);
+        const otherNodeId = edge.source === nodeId ? edge.target : edge.source;
+        if (nodeTypeById.get(otherNodeId) !== 'joinNode') return;
+        highlightQueue.push({ nodeId: otherNodeId, direction: edge.target === otherNodeId ? 'forward' : 'backward' });
+      });
+      if (nodeTypeById.get(nodeId) === 'joinNode') {
+        highlightQueue.push({ nodeId, direction: 'forward' }, { nodeId, direction: 'backward' });
+      }
+    });
+    const expandedHighlightStates = new Set();
+    while (highlightQueue.length) {
+      const { nodeId, direction } = highlightQueue.shift();
+      const stateKey = `${nodeId}:${direction}`;
+      if (expandedHighlightStates.has(stateKey)) continue;
+      expandedHighlightStates.add(stateKey);
+      const directionalEdges = direction === 'forward' ? (sourceEdgesByNode.get(nodeId) || []) : (targetEdgesByNode.get(nodeId) || []);
+      directionalEdges.forEach((edge) => {
+        relatedEdgeIds.add(edge.id);
+        const otherNodeId = direction === 'forward' ? edge.target : edge.source;
+        if (nodeTypeById.get(otherNodeId) === 'joinNode') highlightQueue.push({ nodeId: otherNodeId, direction });
+      });
+    }
     const placementByEdge = (groups, direction) => {
       const placements = new Map();
       groups.forEach((connectedEdges, nodeId) => {
@@ -2517,6 +2766,8 @@ function FlowCanvas() {
       let routedPoints = null;
       let sourceLead = 28;
       let targetLead = 28;
+      let sourceDirection = 1;
+      let targetDirection = -1;
       let localRoutingObstacles = routingObstacles;
       let routingKey = edge.id;
       if (sourceGeometry && targetGeometry) {
@@ -2524,18 +2775,22 @@ function FlowCanvas() {
         const targetPlacement = targetPlacements.get(edge.id) || { offset: 0, index: 0 };
         sourceLead = 28 + sourcePlacement.index * 24;
         targetLead = 28 + targetPlacement.index * 24;
-        const sourcePoint = { x: sourceGeometry.x + sourceGeometry.width, y: sourceGeometry.y + sourceGeometry.height / 2 + sourcePlacement.offset };
-        const targetPoint = { x: targetGeometry.x, y: targetGeometry.y + targetGeometry.height / 2 + targetPlacement.offset };
+        const sourceJoinReversed = nodeTypeById.get(edge.source) === 'joinNode' && joinReversedById.get(edge.source);
+        const targetJoinReversed = nodeTypeById.get(edge.target) === 'joinNode' && joinReversedById.get(edge.target);
+        sourceDirection = sourceJoinReversed ? -1 : 1;
+        targetDirection = targetJoinReversed ? 1 : -1;
+        const sourcePoint = { x: sourceJoinReversed ? sourceGeometry.x : sourceGeometry.x + sourceGeometry.width, y: sourceGeometry.y + sourceGeometry.height / 2 + sourcePlacement.offset };
+        const targetPoint = { x: targetJoinReversed ? targetGeometry.x + targetGeometry.width : targetGeometry.x, y: targetGeometry.y + targetGeometry.height / 2 + targetPlacement.offset };
         const nodeSearchBounds = routingSearchBounds(sourcePoint, targetPoint, 280);
         const lineSearchBounds = routingSearchBounds(sourcePoint, targetPoint, 100);
         localRoutingObstacles = querySpatialObstacles(nodeObstacleIndex, nodeSearchBounds);
         const localLineObstacles = querySpatialObstacles(lineObstacleIndex, lineSearchBounds);
-        routingKey = `${Math.round(sourcePoint.x)},${Math.round(sourcePoint.y)}>${Math.round(targetPoint.x)},${Math.round(targetPoint.y)}|${sourceLead},${targetLead}|N:${obstacleRoutingSignature(localRoutingObstacles)}|L:${obstacleRoutingSignature(localLineObstacles)}`;
+        routingKey = `${Math.round(sourcePoint.x)},${Math.round(sourcePoint.y)}>${Math.round(targetPoint.x)},${Math.round(targetPoint.y)}|${sourceLead},${targetLead}|D:${sourceDirection},${targetDirection}|N:${obstacleRoutingSignature(localRoutingObstacles)}|L:${obstacleRoutingSignature(localLineObstacles)}`;
         const cachedRoute = routeCache.get(edge.id);
         if (cachedRoute?.key === routingKey) routedPoints = cachedRoute.points;
         else {
-          routedPoints = makeOrthogonalRoute(sourcePoint, targetPoint, [...localRoutingObstacles, ...localLineObstacles], sourceLead, targetLead)
-            || makeOrthogonalRoute(sourcePoint, targetPoint, localRoutingObstacles, sourceLead, targetLead);
+          routedPoints = makeOrthogonalRoute(sourcePoint, targetPoint, [...localRoutingObstacles, ...localLineObstacles], sourceLead, targetLead, sourceDirection, targetDirection)
+            || makeOrthogonalRoute(sourcePoint, targetPoint, localRoutingObstacles, sourceLead, targetLead, sourceDirection, targetDirection);
           routeCache.set(edge.id, { key: routingKey, points: routedPoints });
         }
         if (routedPoints) routeSegmentsAsObstacles(routedPoints).forEach((obstacle, index) => addSpatialObstacle(lineObstacleIndex, { ...obstacle, id: `${edge.id}:${index}` }));
@@ -2549,7 +2804,7 @@ function FlowCanvas() {
           color: edge.data?.color || 'gradient',
           sourceColor: nodeById.get(edge.source)?.data?.color || NODE_COLORS[0],
           targetColor: nodeById.get(edge.target)?.data?.color || NODE_COLORS[0],
-          relatedHighlighted: selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target),
+          relatedHighlighted: relatedEdgeIds.has(edge.id),
           cutPoint: edgeCutPoints[edge.id],
           routingObstacles: localRoutingObstacles,
           routedPoints,
@@ -2557,10 +2812,12 @@ function FlowCanvas() {
           routingComputed: Boolean(sourceGeometry && targetGeometry),
           sourceLead,
           targetLead,
+          sourceDirection,
+          targetDirection,
         },
       };
     });
-  }, [nodes, edges, edgeCutPoints, renderedNodeLayoutById, routingDragNodeIds]);
+  }, [nodes, edges, edgeCutPoints, renderedNodeLayoutById, routingDragNodeIds, joinReversedById]);
   const fullZoomCompensation = Math.max(1, 1 / viewportZoom);
   const connectorScale = Math.min(6.7, 1 + (fullZoomCompensation - 1) * 0.3);
   const connectorStyle = {
@@ -2605,7 +2862,7 @@ function FlowCanvas() {
           </div>
           <div className="canvas-toolbox" aria-label={t('Canvas tools', 'CÃ´ng cá»¥ canvas')}>
             <button className={toolMode === 'select' ? 'active' : ''} onClick={() => { setToolMode('select'); setSectionDraft(null); }} title="Select" aria-label="Select"><MousePointer2 size={18} /><kbd>V</kbd></button>
-            <button className={toolMode === 'section' ? 'active' : ''} onClick={() => { setToolMode('section'); setContextMenu(null); setEdgeMenu(null); }} title="Section Group" aria-label="Section Group"><Square size={18} /><kbd>Shift + S</kbd></button>
+            <button className={toolMode === 'section' ? 'active' : ''} onClick={() => { setToolMode('section'); setContextMenu(null); setEdgeMenu(null); }} title="Section Group · S" aria-label="Section Group"><Square size={18} /><kbd>S</kbd></button>
           </div>
           <ReactFlow
             nodes={displayNodes}
@@ -2657,18 +2914,26 @@ function FlowCanvas() {
               <button role="menuitem" onClick={() => addNode('imageNode', contextMenu.flowPosition)}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>Image</span><Plus size={13} /></button>
               <button role="menuitem" onClick={() => addNode('mixerNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Merge size={15} /></span><span>Mixer</span><Plus size={13} /></button>
               <button role="menuitem" onClick={() => addNode('exampleNode', contextMenu.flowPosition)}><span className="menu-icon green"><BookOpenCheck size={15} /></span><span>Example</span><Plus size={13} /></button>
+              <button role="menuitem" onClick={() => addNode('joinNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Waypoints size={15} /></span><span>Join Point</span><Plus size={13} /></button>
               <div className="context-menu-shortcut"><span>{t('Duplicate selected node', 'NhÃ¢n báº£n node Ä‘Ã£ chá»n')}</span><kbd>Ctrl D</kbd></div>
             </div>
           )}
           {joinMenu && (
-            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={t('Join Point options', 'TÃ¹y chá»n Join Point')}>
-              <div className="context-menu-title"><span>JOIN POINT</span><kbd>Right click</kbd></div>
-              <button role="menuitem" onClick={enableJoinMove}><span className="menu-icon violet"><MousePointer2 size={15} /></span><span>{t('Move Join Point', 'Di chuyá»ƒn Join Point')}</span><ArrowRight size={13} /></button>
-              <button role="menuitem" onClick={() => setJoinMenu((current) => current ? { ...current, paletteOpen: !current.paletteOpen } : null)}><span className="menu-icon violet"><Palette size={15} /></span><span>{t('Change color', 'Chá»‰nh mÃ u')}</span><ChevronDown size={13} /></button>
-              {joinMenu.paletteOpen && (
-                <div className="join-color-grid">
-                  {NODE_COLORS.map((color) => <button key={color} className={joinMenu.color === color ? 'active' : ''} style={{ '--join-swatch': color }} onClick={() => setJoinPointColor(color)} aria-label={t(`Join Point color ${color}`, `MÃ u Join Point ${color}`)} />)}
-                </div>
+            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={joinMenu.nodeType === 'mixerNode' ? t('Mixer options') : t('Join Point options')}>
+              <div className="context-menu-title"><span>{joinMenu.nodeType === 'mixerNode' ? 'MIXER' : 'JOIN POINT'}</span><kbd>Right click</kbd></div>
+              {joinMenu.nodeType === 'mixerNode' ? (
+                <button role="menuitem" onClick={convertMixerToJoin}><span className="menu-icon violet"><Waypoints size={15} /></span><span>{t('Convert to Join Point')}</span><ArrowRight size={13} /></button>
+              ) : (
+                <>
+                  <button role="menuitem" onClick={enableJoinMove}><span className="menu-icon violet"><MousePointer2 size={15} /></span><span>{t('Move Join Point')}</span><ArrowRight size={13} /></button>
+                  <button role="menuitem" onClick={() => setJoinMenu((current) => current ? { ...current, paletteOpen: !current.paletteOpen } : null)}><span className="menu-icon violet"><Palette size={15} /></span><span>{t('Change color')}</span><ChevronDown size={13} /></button>
+                  {joinMenu.paletteOpen && (
+                    <div className="join-color-grid">
+                      {NODE_COLORS.map((color) => <button key={color} className={joinMenu.color === color ? 'active' : ''} style={{ '--join-swatch': color }} onClick={() => setJoinPointColor(color)} aria-label={t(`Join Point color ${color}`)} />)}
+                    </div>
+                  )}
+                  <button role="menuitem" onClick={convertJoinToMixer}><span className="menu-icon violet"><Merge size={15} /></span><span>{t('Convert to Mixer')}</span><ArrowRight size={13} /></button>
+                </>
               )}
             </div>
           )}

@@ -258,7 +258,7 @@ export async function readProject(project) {
   const texts = await directory.getDirectoryHandle('texts', { create: true });
   const nodes = await Promise.all((data.nodes || []).map(async (node) => {
     const next = { ...node, data: { ...(node.data || {}) } };
-    if (node.type === 'textNode' && next.data.textFile) {
+    if (['textNode', 'exampleNode'].includes(node.type) && next.data.textFile) {
       try {
         const fileName = next.data.textFile.split('/').pop();
         next.data.content = await (await (await texts.getFileHandle(fileName)).getFile()).text();
@@ -294,7 +294,9 @@ export async function saveProject(project, nodes, edges) {
     };
     delete clean.data.resources;
     delete clean.data.resourceCount;
-    if (node.type === 'textNode') {
+    const isExampleText = node.type === 'exampleNode'
+      && (node.data?.exampleMode === 'text' || (!node.data?.exampleMode && !node.data?.image && typeof node.data?.content === 'string'));
+    if (node.type === 'textNode' || isExampleText) {
       const file = safeTextName(node.id);
       await writeFile(texts, file, String(node.data?.content || ''));
       referencedTexts.add(file);
