@@ -19,6 +19,7 @@ import {
   SelectionMode,
   BaseEdge,
   EdgeLabelRenderer,
+  ViewportPortal,
   getSmoothStepPath,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -289,12 +290,27 @@ const sameRenderedNodeLayout = (previous, next) => previous.length === next.leng
   return node.id === candidate.id && node.x === candidate.x && node.y === candidate.y && node.width === candidate.width && node.height === candidate.height;
 });
 
-function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className = '' }) {
+const sameNoteNodeLayout = (previous, next) => previous?.x === next?.x
+  && previous?.y === next?.y
+  && previous?.width === next?.width
+  && previous?.height === next?.height;
+
+function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className = '', selected = false }) {
   const t = useTranslation();
   const { updateNode } = useContext(NodeActionsContext);
   const [open, setOpen] = useState(false);
   const textareaRef = useRef(null);
   const hasNote = Boolean(note?.trim());
+  const nodeLayout = useStore(useCallback((state) => {
+    const node = state.nodeLookup.get(nodeId);
+    if (!node) return null;
+    return {
+      x: node.internals.positionAbsolute.x,
+      y: node.internals.positionAbsolute.y,
+      width: node.measured.width || node.width || 0,
+      height: node.measured.height || node.height || 0,
+    };
+  }, [nodeId]), sameNoteNodeLayout);
   const fitNoteHeight = useCallback((element = textareaRef.current) => {
     if (!element) return;
     element.style.height = 'auto';
@@ -321,17 +337,28 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
       >
         <MessageSquare size={14} />
       </button>
-      {open && (
-        <div className="node-note-panel">
-          <textarea
-            ref={textareaRef}
-            className="node-note-textarea nowheel"
-            value={note || ''}
-            placeholder={t('Write a quick noteâ€¦', 'Nháº­p ghi chÃº nhanh...')}
-            onChange={(event) => { updateNode(nodeId, { note: event.target.value }); fitNoteHeight(event.currentTarget); }}
-            autoFocus
-          />
-        </div>
+      {open && nodeLayout && (
+        <ViewportPortal>
+          <div
+            className={`viewport-note-panel nodrag nopan nowheel ${selected ? 'is-foreground' : 'is-background'}`}
+            style={{
+              '--node-color': color,
+              left: nodeLayout.x + nodeLayout.width + 48,
+              top: nodeLayout.y + nodeLayout.height - 10,
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <textarea
+              ref={textareaRef}
+              className="node-note-textarea nowheel"
+              value={note || ''}
+              placeholder={t('Write a quick noteâ€¦', 'Nháº­p ghi chÃº nhanh...')}
+              onChange={(event) => { updateNode(nodeId, { note: event.target.value }); fitNoteHeight(event.currentTarget); }}
+              autoFocus
+            />
+          </div>
+        </ViewportPortal>
       )}
     </div>
   );
@@ -340,7 +367,7 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
 function NodeShell({ children, className = '', selected = false, color = NODE_COLORS[0], nodeId = null, note = '', ...props }) {
   return (
     <article className={`node-card ${className} ${selected ? 'is-selected' : ''}`} style={{ '--node-color': color }} {...props}>
-      {nodeId && <NodeNoteControl nodeId={nodeId} note={note} color={color} />}
+      {nodeId && <NodeNoteControl nodeId={nodeId} note={note} color={color} selected={selected} />}
       {children}
     </article>
   );
@@ -746,7 +773,7 @@ const CanvasImageNode = memo(({ id, data, selected }) => {
   const { updateNode } = useContext(NodeActionsContext);
   return (
     <div className={`canvas-image-node ${selected ? 'is-selected' : ''}`} style={{ width: data.width || 320, height: data.height || 240 }} title={t('Free image Â· right-click to make a node', 'áº¢nh tá»± do Â· chuá»™t pháº£i Ä‘á»ƒ Make node')}>
-      <NodeNoteControl nodeId={id} note={data.note} color="#8b7cf6" />
+      <NodeNoteControl nodeId={id} note={data.note} color="#8b7cf6" selected={selected} />
       <NodeResizer
         isVisible={selected}
         minWidth={80}
@@ -769,7 +796,7 @@ const JoinNode = memo(({ id, data, selected }) => {
     <div className={`join-point ${selected ? 'is-selected' : ''} ${data.moveEnabled ? 'is-move-enabled' : ''}`} style={{ '--join-color': color }} title={data.moveEnabled ? t('Drag to move Join Point', 'KÃ©o Ä‘á»ƒ di chuyá»ƒn Join Point') : 'Join Point'}>
       <Handle id="join-in" type="target" position={Position.Left} className="join-unified-handle join-target-zone" aria-label={t('Join Point input', 'Äáº§u nháº­n Join Point')} title={t('Input', 'Äáº§u nháº­n')} />
       <Handle id="join-out" type="source" position={Position.Right} className="join-unified-handle join-source-zone" aria-label={t('Join Point output', 'Äáº§u ra Join Point')} title={t('Output', 'Äáº§u ra')} />
-      <NodeNoteControl nodeId={id} note={data.note} color={color} className="join-note-control" />
+      <NodeNoteControl nodeId={id} note={data.note} color={color} className="join-note-control" selected={selected} />
       <Waypoints size={16} strokeWidth={2.6} />
     </div>
   );
@@ -795,7 +822,7 @@ const SectionNode = memo(({ id, data, selected }) => {
 
   return (
     <section className={`section-frame ${selected ? 'is-selected' : ''}`} style={{ width: data.width || 420, height: data.height || 260, '--section-color': color }}>
-      <NodeNoteControl nodeId={id} note={data.note} color={color} />
+      <NodeNoteControl nodeId={id} note={data.note} color={color} selected={selected} />
       <NodeResizer
         isVisible={selected}
         minWidth={180}
