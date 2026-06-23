@@ -37,7 +37,6 @@ import {
   GripVertical,
   Image as ImageIcon,
   Layers3,
-  Languages,
   Menu,
   MessageSquare,
   Merge,
@@ -67,13 +66,27 @@ import * as fileStorage from './fileSystemStorage.js';
 const STORAGE_KEY = 'mergeboard-project-v1';
 const ACTIVE_PROJECT_KEY = 'mergeboard-active-project-v1';
 const THEME_KEY = 'mergeboard-theme-v1';
-const LANGUAGE_KEY = 'mergeboard-language-v1';
 const NodeActionsContext = createContext(null);
 const EdgeActionsContext = createContext(null);
-const LanguageContext = createContext({ language: 'en', t: (english) => english });
+
+const ENGLISH_TEXT_REPLACEMENTS = [
+  ['â€¦', '…'],
+  ['Â·', '·'],
+  ['â€”', '—'],
+  ['â€œ', '“'],
+  ['â€', '”'],
+  ['â€˜', '‘'],
+  ['â€™', '’'],
+  ['Ã—', '×'],
+];
+
+function translateEnglish(value) {
+  if (typeof value !== 'string') return value;
+  return ENGLISH_TEXT_REPLACEMENTS.reduce((text, [broken, replacement]) => text.replaceAll(broken, replacement), value);
+}
 
 function useTranslation() {
-  return useContext(LanguageContext).t;
+  return translateEnglish;
 }
 
 const NODE_COLORS = ['#7c6cf2', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#a855f7'];
@@ -535,6 +548,7 @@ const ImageNode = memo(({ id, data, selected }) => {
   const lightboxDragRef = useRef(null);
   const viewMode = data.viewMode || 'expanded';
   const color = data.color || '#f59e0b';
+  const isTallPortrait = dimensions.width > 0 && dimensions.height / dimensions.width > 1.45;
   const onFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -647,9 +661,9 @@ const ImageNode = memo(({ id, data, selected }) => {
         <NodeHeader icon={ImageIcon} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
         <div className="node-body image-node-content">
           {data.image ? (
-            <div className="image-preview" onDoubleClick={(event) => { event.stopPropagation(); setPreviewOpen(true); }}>
+            <div className={`image-preview ${isTallPortrait ? 'is-height-limited' : ''}`} onDoubleClick={(event) => { event.stopPropagation(); setPreviewOpen(true); }}>
               <img src={data.image} alt={data.title || t('Image resource', 'TÃ i nguyÃªn áº£nh')} draggable="false" onLoad={(event) => { const next = { width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight }; setDimensions(next); if (next.width !== data.imageWidth || next.height !== data.imageHeight) updateNode(id, { imageWidth: next.width, imageHeight: next.height }); }} />
-              {!!dimensions.width && <span className="image-dimensions">{dimensions.width} Ã— {dimensions.height}</span>}
+              {!!dimensions.width && <span className="image-dimensions">{dimensions.width} × {dimensions.height}</span>}
               {selected && <div className="image-selection-gradient" />}
               {selected && <label className="replace-image nodrag" title={t('Replace image', 'Äá»•i áº£nh')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
             </div>
@@ -675,7 +689,7 @@ const ImageNode = memo(({ id, data, selected }) => {
               onPointerCancel={finishLightboxPan}
               onDoubleClick={() => setLightboxView({ zoom: 1, x: 0, y: 0, panning: false })}
             ><img src={data.image} alt={data.title || data.fileName} draggable="false" style={{ width: lightboxFit.width || undefined, height: lightboxFit.height || undefined, maxWidth: lightboxFit.width ? 'none' : undefined, maxHeight: lightboxFit.height ? 'none' : undefined, transform: `translate(${lightboxView.x}px, ${lightboxView.y}px) scale(${lightboxView.zoom})` }} /></div>
-            <footer><span>{dimensions.width || 'â€”'} Ã— {dimensions.height || 'â€”'} px Â· {t('Zoom', 'Thu phÃ³ng')} {Math.round(lightboxView.zoom * 100)}%{lightboxView.zoom > 1 ? ` Â· ${t('drag to pan', 'kÃ©o Ä‘á»ƒ xem')}` : ''}</span><button onClick={() => revealAsset(data.assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer', 'Má»Ÿ asset trong Explorer')}</button></footer>
+            <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px · {t('Zoom')} {Math.round(lightboxView.zoom * 100)}%{lightboxView.zoom > 1 ? ` · ${t('drag to pan')}` : ''}</span><button onClick={() => revealAsset(data.assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer')}</button></footer>
           </section>
         </div>,
         document.body,
@@ -689,9 +703,34 @@ const MixerNode = memo(({ id, data, selected }) => {
   const { focusNode } = useContext(NodeActionsContext);
   const resources = data.resources || [];
   const viewMode = data.viewMode || 'expanded';
-  const imageCount = resources.filter((resource) => resource.kind === 'image').length;
+  const imageResources = resources.filter((resource) => resource.kind === 'image');
+  const textResources = resources.filter((resource) => resource.kind !== 'image');
+  const [imageOrientations, setImageOrientations] = useState({});
+  const imageCount = imageResources.length;
   const textResource = resources.find((resource) => resource.kind === 'text');
   const color = data.color || '#7c6cf2';
+  const isPortraitImage = useCallback((resource) => imageOrientations[resource.sourceId]
+    ? imageOrientations[resource.sourceId] === 'portrait'
+    : Number(resource.imageHeight || 0) > Number(resource.imageWidth || 0), [imageOrientations]);
+  const portraitCount = imageResources.filter(isPortraitImage).length;
+  const registerImageOrientation = useCallback((resource, element) => {
+    const orientation = element.naturalHeight > element.naturalWidth ? 'portrait' : 'landscape';
+    setImageOrientations((current) => current[resource.sourceId] === orientation
+      ? current
+      : { ...current, [resource.sourceId]: orientation });
+  }, []);
+  const renderImageResource = (resource, index) => {
+    const usePortraitGrid = portraitCount > 1 && isPortraitImage(resource);
+    return (
+      <section className={`resource-block image-resource-block ${usePortraitGrid ? 'is-portrait-grid' : 'is-full-row'}`} key={`${resource.sourceId}-${index}`}>
+        <div className="mixer-image-wrap">
+          <img className="mixer-image" src={resource.value} alt={resource.title} draggable="false" onLoad={(event) => registerImageOrientation(resource, event.currentTarget)} />
+          <button className={`mixer-image-title-link nodrag ${(resource.title || '').length > 25 ? 'is-long' : ''}`} style={{ color: resource.sourceColor || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(resource.sourceId); }} aria-label={t(`Go to ${resource.title}`, `Äi tá»›i ${resource.title}`)} title={resource.title}><span>{resource.title || t('Untitled Image', 'áº¢nh chÆ°a Ä‘áº·t tÃªn')}</span></button>
+          <div className="mixer-image-copy"><CopyButton value={resource.value} kind="image" /></div>
+        </div>
+      </section>
+    );
+  };
   return (
     <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`mixer-card mode-${viewMode}`}>
       <div className="mixer-port-anchor">
@@ -701,21 +740,20 @@ const MixerNode = memo(({ id, data, selected }) => {
           {!resources.length && (
             <div className="empty-mixer"><Zap size={23} /><strong>{t('Connect resources', 'Káº¿t ná»‘i tÃ i nguyÃªn')}</strong><span>{t('Drag a connector from Text or Image into the left port.', 'KÃ©o dÃ¢y tá»« Text hoáº·c Image vÃ o cá»•ng bÃªn trÃ¡i.')}</span></div>
           )}
-          {resources.map((resource, index) => (
+          {!!imageResources.length && <div className={`mixer-image-grid ${portraitCount > 1 ? 'has-portrait-pairs' : ''}`}>{imageResources.map(renderImageResource)}</div>}
+          {textResources.map((resource, index) => (
             <section className="resource-block" key={`${resource.sourceId}-${index}`}>
-              {resource.kind !== 'image' && <div className="resource-meta"><span className={`resource-kind ${resource.kind}`}>{resource.title}</span><CopyButton value={resource.value} kind={resource.kind} /></div>}
-              {resource.kind === 'image'
-                ? <div className="mixer-image-wrap"><img className="mixer-image" src={resource.value} alt={resource.title} draggable="false" /><button className={`mixer-image-title-link nodrag ${(resource.title || '').length > 25 ? 'is-long' : ''}`} style={{ color: resource.sourceColor || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(resource.sourceId); }} aria-label={t(`Go to ${resource.title}`, `Äi tá»›i ${resource.title}`)} title={resource.title}><span>{resource.title || t('Untitled Image', 'áº¢nh chÆ°a Ä‘áº·t tÃªn')}</span></button><div className="mixer-image-copy"><CopyButton value={resource.value} kind="image" /></div></div>
-                : resource.segments?.length
-                  ? <div className="mixer-text mixer-text-group">{resource.segments.map((segment, segmentIndex) => <section className={`mixer-text-segment tone-${segmentIndex % 2 ? 'b' : 'a'}`} key={segment.sourceId}><div className="mixer-segment-source"><button className="mixer-segment-title-link nodrag" style={{ color: segment.color || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(segment.sourceId); }} aria-label={t(`Go to ${segment.title || 'text node'}`, `Äi tá»›i ${segment.title || 'node text'}`)} title={t('Go to source node', 'Äi tá»›i node nguá»“n')}>{segment.title || t('Untitled Text', 'Text chÆ°a Ä‘áº·t tÃªn')}</button></div><p>{segment.value}</p></section>)}</div>
-                  : <p className="mixer-text">{resource.value || <em>{t('Empty content', 'Ná»™i dung trá»‘ng')}</em>}</p>}
+              <div className="resource-meta"><span className={`resource-kind ${resource.kind}`}>{resource.title}</span><CopyButton value={resource.value} kind={resource.kind} /></div>
+              {resource.segments?.length
+                ? <div className="mixer-text mixer-text-group">{resource.segments.map((segment, segmentIndex) => <section className={`mixer-text-segment tone-${segmentIndex % 2 ? 'b' : 'a'}`} key={segment.sourceId}><div className="mixer-segment-source"><button className="mixer-segment-title-link nodrag" style={{ color: segment.color || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(segment.sourceId); }} aria-label={t(`Go to ${segment.title || 'text node'}`, `Äi tá»›i ${segment.title || 'node text'}`)} title={t('Go to source node', 'Äi tá»›i node nguá»“n')}>{segment.title || t('Untitled Text', 'Text chÆ°a Ä‘áº·t tÃªn')}</button></div><p>{segment.value}</p></section>)}</div>
+                : <p className="mixer-text">{resource.value || <em>{t('Empty content', 'Ná»™i dung trá»‘ng')}</em>}</p>}
             </section>
           ))}
         </div>
         <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
       </div>
       <div className="mixer-footer-note is-outside">
-        <span>{imageCount} {t('images', 'áº£nh')}</span><span>{textResource ? `${textResource.count} text Â· ${t('merged', 'Ä‘Ã£ gá»™p')}` : '0 text'}</span>
+        <span>{imageCount} {t('images')}</span><span>{textResource ? `${textResource.count} text · ${t('merged')}` : '0 text'}</span>
       </div>
     </NodeShell>
   );
@@ -723,7 +761,7 @@ const MixerNode = memo(({ id, data, selected }) => {
 
 const ExampleNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
-  const { uploadImage, showToast, focusNode } = useContext(NodeActionsContext);
+  const { uploadImage, showToast, focusNode, updateNode } = useContext(NodeActionsContext);
   const [uploading, setUploading] = useState(false);
   const viewMode = data.viewMode || 'expanded';
   const inputTitles = data.inputTitles || [];
@@ -745,7 +783,7 @@ const ExampleNode = memo(({ id, data, selected }) => {
       <div className="example-content nowheel">
         {data.image ? (
           <div className="image-preview example-preview">
-            <img src={data.image} alt={data.title || t('Example image', 'áº¢nh example')} draggable="false" />
+            <img src={data.image} alt={data.title || t('Example image', 'áº¢nh example')} draggable="false" onLoad={(event) => { const imageWidth = event.currentTarget.naturalWidth; const imageHeight = event.currentTarget.naturalHeight; if (imageWidth !== data.imageWidth || imageHeight !== data.imageHeight) updateNode(id, { imageWidth, imageHeight }); }} />
             {selected && <label className="replace-image compact-upload-button nodrag" title={t('Replace example image', 'Äá»•i áº£nh example')}><Upload size={16} /><input type="file" accept="image/*" onChange={onFile} disabled={uploading} /></label>}
           </div>
         ) : (
@@ -753,7 +791,7 @@ const ExampleNode = memo(({ id, data, selected }) => {
         )}
         <div className="mixer-footer-note example-resource-count"><span>{inputImageCount} {t('images', 'áº£nh')}</span><span>{inputTextCount} text</span></div>
         <section className="example-inputs">
-          <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE Â· {inputTitles.length}</div>
+          <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE · {inputTitles.length}</div>
           {inputTitles.length ? inputTitles.map((item) => (
             <div className={`example-title-row ${item.kind}`} key={item.id}>
               {item.kind === 'example' ? <BookOpenCheck size={13} /> : item.kind === 'image' ? <ImageIcon size={13} /> : <FileText size={13} />}
@@ -796,7 +834,6 @@ const JoinNode = memo(({ id, data, selected }) => {
     <div className={`join-point ${selected ? 'is-selected' : ''} ${data.moveEnabled ? 'is-move-enabled' : ''}`} style={{ '--join-color': color }} title={data.moveEnabled ? t('Drag to move Join Point', 'KÃ©o Ä‘á»ƒ di chuyá»ƒn Join Point') : 'Join Point'}>
       <Handle id="join-in" type="target" position={Position.Left} className="join-unified-handle join-target-zone" aria-label={t('Join Point input', 'Äáº§u nháº­n Join Point')} title={t('Input', 'Äáº§u nháº­n')} />
       <Handle id="join-out" type="source" position={Position.Right} className="join-unified-handle join-source-zone" aria-label={t('Join Point output', 'Äáº§u ra Join Point')} title={t('Output', 'Äáº§u ra')} />
-      <NodeNoteControl nodeId={id} note={data.note} color={color} className="join-note-control" selected={selected} />
       <Waypoints size={16} strokeWidth={2.6} />
     </div>
   );
@@ -1012,6 +1049,62 @@ function routeSegmentsAsObstacles(points, padding = 16) {
   });
 }
 
+function createSpatialObstacleIndex(obstacles = [], cellSize = 320) {
+  const grid = new Map();
+  const index = { cellSize, grid, obstacles: [] };
+  obstacles.forEach((obstacle) => addSpatialObstacle(index, obstacle));
+  return index;
+}
+
+function addSpatialObstacle(index, obstacle) {
+  const obstacleIndex = index.obstacles.length;
+  index.obstacles.push(obstacle);
+  const minColumn = Math.floor(obstacle.left / index.cellSize);
+  const maxColumn = Math.floor(obstacle.right / index.cellSize);
+  const minRow = Math.floor(obstacle.top / index.cellSize);
+  const maxRow = Math.floor(obstacle.bottom / index.cellSize);
+  for (let column = minColumn; column <= maxColumn; column += 1) {
+    for (let row = minRow; row <= maxRow; row += 1) {
+      const key = `${column}|${row}`;
+      if (!index.grid.has(key)) index.grid.set(key, []);
+      index.grid.get(key).push(obstacleIndex);
+    }
+  }
+}
+
+function querySpatialObstacles(index, bounds) {
+  const minColumn = Math.floor(bounds.left / index.cellSize);
+  const maxColumn = Math.floor(bounds.right / index.cellSize);
+  const minRow = Math.floor(bounds.top / index.cellSize);
+  const maxRow = Math.floor(bounds.bottom / index.cellSize);
+  const cellCount = (maxColumn - minColumn + 1) * (maxRow - minRow + 1);
+  if (cellCount > Math.max(64, index.grid.size * 2)) {
+    return index.obstacles.filter((obstacle) => obstacle.right >= bounds.left && obstacle.left <= bounds.right && obstacle.bottom >= bounds.top && obstacle.top <= bounds.bottom);
+  }
+  const candidates = new Set();
+  for (let column = minColumn; column <= maxColumn; column += 1) {
+    for (let row = minRow; row <= maxRow; row += 1) {
+      (index.grid.get(`${column}|${row}`) || []).forEach((obstacleIndex) => candidates.add(obstacleIndex));
+    }
+  }
+  return [...candidates]
+    .map((obstacleIndex) => index.obstacles[obstacleIndex])
+    .filter((obstacle) => obstacle.right >= bounds.left && obstacle.left <= bounds.right && obstacle.bottom >= bounds.top && obstacle.top <= bounds.bottom);
+}
+
+function routingSearchBounds(start, end, margin = 280) {
+  return {
+    left: Math.min(start.x, end.x) - margin,
+    right: Math.max(start.x, end.x) + margin,
+    top: Math.min(start.y, end.y) - margin,
+    bottom: Math.max(start.y, end.y) + margin,
+  };
+}
+
+function obstacleRoutingSignature(obstacles) {
+  return obstacles.map((obstacle) => `${obstacle.id || ''}:${Math.round(obstacle.left)},${Math.round(obstacle.top)},${Math.round(obstacle.right)},${Math.round(obstacle.bottom)}`).join(';');
+}
+
 function offsetPointOnEdgePath(pathElement, clickPoint, screenGap, zoom) {
   if (!pathElement?.getTotalLength || !pathElement?.getPointAtLength) return clickPoint;
   const total = pathElement.getTotalLength();
@@ -1074,7 +1167,9 @@ const BeamEdge = memo(({
     const sourcePoint = { x: sourceX, y: sourceY };
     const targetPoint = { x: targetX, y: targetY };
     const obstacles = data?.routingObstacles || [];
-    const plannedRoute = data?.routedPoints || makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead);
+    const plannedRoute = data?.routingComputed
+      ? data?.routedPoints
+      : (data?.routedPoints || makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead));
     if (!plannedRoute) return getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 18 }).slice(0, 3);
     let route = plannedRoute.map((point, index) => index === 0 ? sourcePoint : index === plannedRoute.length - 1 ? targetPoint : point);
     const hasDiagonal = route.slice(1).some((point, index) => point.x !== route[index].x && point.y !== route[index].y);
@@ -1085,7 +1180,7 @@ const BeamEdge = memo(({
     }
     const midpoint = routeMidpoint(route);
     return [roundedRoutePath(route), midpoint.x, midpoint.y];
-  }, [data?.routingObstacles, source, sourcePosition, sourceX, sourceY, target, targetPosition, targetX, targetY]);
+  }, [data?.routedPoints, data?.routingKey, source, sourcePosition, sourceX, sourceY, target, targetPosition, targetX, targetY]);
   const cutX = data?.cutPoint?.x ?? labelX;
   const cutY = data?.cutPoint?.y ?? labelY;
 
@@ -1188,7 +1283,7 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
                       title={t('Drag to reorder', 'KÃƒÂ©o Ã„â€˜Ã¡Â»Æ’ sÃ¡ÂºÂ¯p xÃ¡ÂºÂ¿p')}
                     ><GripVertical size={13} /></button>
                     <button className="project-select" onClick={() => { onSelect(project.id); setOpen(false); }}>
-                      <span className="project-dot"></span><span><strong>{project.name}</strong><small>{project.nodeCount || 0} nodes Â· {project.edgeCount || 0} links</small></span>
+                      <span className="project-dot"></span><span><strong>{project.name}</strong><small>{project.nodeCount || 0} nodes · {project.edgeCount || 0} links</small></span>
                     </button>
                     <button onClick={() => { setEditingId(project.id); setEditingName(project.name); }} aria-label={t(`Rename ${project.name}`, `Äá»•i tÃªn ${project.name}`)}><Pencil size={11} /></button>
                     <button disabled={projects.length <= 1} onClick={() => setDeletePending(project.id)} aria-label={t(`Delete ${project.name}`, `XÃ³a ${project.name}`)}><Trash2 size={11} /></button>
@@ -1251,8 +1346,7 @@ function FlowCanvas() {
   const [collapsed, setCollapsed] = useState(false);
   const [toast, setToast] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || 'dark');
-  const [language, setLanguage] = useState(() => localStorage.getItem(LANGUAGE_KEY) || 'en');
-  const t = useCallback((english, vietnamese) => language === 'vi' ? vietnamese : english, [language]);
+  const t = translateEnglish;
   const [storageReady, setStorageReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState('loading');
   const [contextMenu, setContextMenu] = useState(null);
@@ -1263,6 +1357,7 @@ function FlowCanvas() {
   const [edgeCutPoints, setEdgeCutPoints] = useState({});
   const [viewportZoom, setViewportZoom] = useState(1);
   const [toolMode, setToolMode] = useState('select');
+  const [routingDragNodeIds, setRoutingDragNodeIds] = useState([]);
   const [sectionDraft, setSectionDraft] = useState(null);
   const [projects, setProjects] = useState([]);
   const [activeProjectId, setActiveProjectId] = useState(null);
@@ -1283,6 +1378,7 @@ function FlowCanvas() {
   const latestSnapshotRef = useRef(null);
   const duplicateDeltaRef = useRef({ x: 42, y: 42 });
   const pendingDuplicateRef = useRef(null);
+  const routeCacheRef = useRef(new Map());
   const { screenToFlowPosition, fitView, getNode, setCenter, getViewport, setViewport } = useReactFlow();
   const renderedNodeLayout = useStore(selectRenderedNodeLayout, sameRenderedNodeLayout);
 
@@ -1592,9 +1688,9 @@ function FlowCanvas() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem(LANGUAGE_KEY, language);
-    document.documentElement.lang = language;
-  }, [language]);
+    localStorage.removeItem('mergeboard-language-v1');
+    document.documentElement.lang = 'en';
+  }, []);
 
   const updateNode = useCallback((id, patch) => {
     setNodes((current) => current.map((node) => node.id === id ? { ...node, data: { ...node.data, ...patch } } : node));
@@ -1928,7 +2024,7 @@ function FlowCanvas() {
       id: `${node.type}-${timestamp}-${index}`,
       position: { x: node.position.x + delta.x, y: node.position.y + delta.y },
       selected: true,
-      data: { ...node.data, title: `${node.data.title || 'Node'} Â· ${t('copy', 'báº£n sao')}` },
+      data: { ...node.data, title: `${node.data.title || 'Node'} · ${t('copy')}` },
     }));
     pendingDuplicateRef.current = {
       pairs: selectedNodes.map((node, index) => ({
@@ -1967,6 +2063,16 @@ function FlowCanvas() {
       y: Math.round((average.y / deltas.length) * 100) / 100,
     };
   }, [movableJoinId, nodes]);
+
+  const beginNodeRoutingDrag = useCallback((_event, node) => {
+    const selectedIds = nodes.filter((item) => item.selected).map((item) => item.id);
+    setRoutingDragNodeIds(selectedIds.includes(node.id) ? selectedIds : [node.id]);
+  }, [nodes]);
+
+  const finishNodeRoutingDrag = useCallback((event, node, draggedNodes = []) => {
+    rememberDuplicateSpacing(event, node, draggedNodes);
+    setRoutingDragNodeIds([]);
+  }, [rememberDuplicateSpacing]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -2272,12 +2378,12 @@ function FlowCanvas() {
         }
         if (source.type === 'imageNode') {
           return source.data.image
-            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color }]
+            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color, imageWidth: source.data.imageWidth, imageHeight: source.data.imageHeight }]
             : [];
         }
         if (source.type === 'exampleNode') {
           return source.data.image
-            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color }]
+            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color, imageWidth: source.data.imageWidth, imageHeight: source.data.imageHeight }]
             : [];
         }
         if (['mixerNode', 'joinNode'].includes(source.type)) return collectResources(source.id, nextVisited);
@@ -2338,6 +2444,7 @@ function FlowCanvas() {
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const nodeTypeById = new Map(nodes.map((node) => [node.id, node.type]));
     const selectedNodeIds = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+    const activelyDraggedNodeIds = new Set(routingDragNodeIds);
     const geometryFor = (nodeId) => {
       const node = nodeById.get(nodeId);
       if (!node) return null;
@@ -2356,22 +2463,33 @@ function FlowCanvas() {
       const geometry = geometryFor(nodeId);
       return geometry ? geometry.y + geometry.height / 2 : 0;
     };
-    const portPlacementFor = (edge, direction) => {
-      const nodeId = direction === 'source' ? edge.source : edge.target;
-      const connectedEdges = edges
-        .filter((candidate) => direction === 'source' ? candidate.source === nodeId : candidate.target === nodeId)
-        .sort((a, b) => {
+    const sourceEdgesByNode = new Map();
+    const targetEdgesByNode = new Map();
+    edges.forEach((edge) => {
+      if (!sourceEdgesByNode.has(edge.source)) sourceEdgesByNode.set(edge.source, []);
+      if (!targetEdgesByNode.has(edge.target)) targetEdgesByNode.set(edge.target, []);
+      sourceEdgesByNode.get(edge.source).push(edge);
+      targetEdgesByNode.get(edge.target).push(edge);
+    });
+    const placementByEdge = (groups, direction) => {
+      const placements = new Map();
+      groups.forEach((connectedEdges, nodeId) => {
+        connectedEdges.sort((a, b) => {
           const aOther = direction === 'source' ? a.target : a.source;
           const bOther = direction === 'source' ? b.target : b.source;
           return centerYFor(aOther) - centerYFor(bOther) || a.id.localeCompare(b.id);
         });
-      const index = connectedEdges.findIndex((candidate) => candidate.id === edge.id);
-      if (nodeTypeById.get(nodeId) === 'joinNode') return { offset: 0, index: Math.max(0, index) };
-      const totalHeight = connectedEdges.length * 18 + 18 + connectedEdges.length * 24;
-      return { offset: -totalHeight / 2 + 9 + Math.max(0, index) * 42, index: Math.max(0, index) };
+        const totalHeight = connectedEdges.length * 18 + 18 + connectedEdges.length * 24;
+        connectedEdges.forEach((edge, index) => placements.set(edge.id, nodeTypeById.get(nodeId) === 'joinNode'
+          ? { offset: 0, index }
+          : { offset: -totalHeight / 2 + 9 + index * 42, index }));
+      });
+      return placements;
     };
+    const sourcePlacements = placementByEdge(sourceEdgesByNode, 'source');
+    const targetPlacements = placementByEdge(targetEdgesByNode, 'target');
     const routingObstacles = nodes
-      .filter((node) => node.type !== 'sectionNode')
+      .filter((node) => node.type !== 'sectionNode' && !activelyDraggedNodeIds.has(node.id))
       .map((node) => {
         const renderedNode = renderedNodeLayoutById.get(node.id);
         const fallbackPosition = node.position || { x: 0, y: 0 };
@@ -2388,23 +2506,39 @@ function FlowCanvas() {
           bottom: position.y + height + (isJoin ? 20 : 18),
         };
       });
-    const reservedLineObstacles = [];
+    const nodeObstacleIndex = createSpatialObstacleIndex(routingObstacles);
+    const lineObstacleIndex = createSpatialObstacleIndex([], 240);
+    const routeCache = routeCacheRef.current;
+    const activeEdgeIds = new Set(edges.map((edge) => edge.id));
+    [...routeCache.keys()].forEach((edgeId) => { if (!activeEdgeIds.has(edgeId)) routeCache.delete(edgeId); });
     return edges.map((edge) => {
       const sourceGeometry = geometryFor(edge.source);
       const targetGeometry = geometryFor(edge.target);
       let routedPoints = null;
       let sourceLead = 28;
       let targetLead = 28;
+      let localRoutingObstacles = routingObstacles;
+      let routingKey = edge.id;
       if (sourceGeometry && targetGeometry) {
-        const sourcePlacement = portPlacementFor(edge, 'source');
-        const targetPlacement = portPlacementFor(edge, 'target');
+        const sourcePlacement = sourcePlacements.get(edge.id) || { offset: 0, index: 0 };
+        const targetPlacement = targetPlacements.get(edge.id) || { offset: 0, index: 0 };
         sourceLead = 28 + sourcePlacement.index * 24;
         targetLead = 28 + targetPlacement.index * 24;
         const sourcePoint = { x: sourceGeometry.x + sourceGeometry.width, y: sourceGeometry.y + sourceGeometry.height / 2 + sourcePlacement.offset };
         const targetPoint = { x: targetGeometry.x, y: targetGeometry.y + targetGeometry.height / 2 + targetPlacement.offset };
-        routedPoints = makeOrthogonalRoute(sourcePoint, targetPoint, [...routingObstacles, ...reservedLineObstacles], sourceLead, targetLead)
-          || makeOrthogonalRoute(sourcePoint, targetPoint, routingObstacles, sourceLead, targetLead);
-        if (routedPoints) reservedLineObstacles.push(...routeSegmentsAsObstacles(routedPoints));
+        const nodeSearchBounds = routingSearchBounds(sourcePoint, targetPoint, 280);
+        const lineSearchBounds = routingSearchBounds(sourcePoint, targetPoint, 100);
+        localRoutingObstacles = querySpatialObstacles(nodeObstacleIndex, nodeSearchBounds);
+        const localLineObstacles = querySpatialObstacles(lineObstacleIndex, lineSearchBounds);
+        routingKey = `${Math.round(sourcePoint.x)},${Math.round(sourcePoint.y)}>${Math.round(targetPoint.x)},${Math.round(targetPoint.y)}|${sourceLead},${targetLead}|N:${obstacleRoutingSignature(localRoutingObstacles)}|L:${obstacleRoutingSignature(localLineObstacles)}`;
+        const cachedRoute = routeCache.get(edge.id);
+        if (cachedRoute?.key === routingKey) routedPoints = cachedRoute.points;
+        else {
+          routedPoints = makeOrthogonalRoute(sourcePoint, targetPoint, [...localRoutingObstacles, ...localLineObstacles], sourceLead, targetLead)
+            || makeOrthogonalRoute(sourcePoint, targetPoint, localRoutingObstacles, sourceLead, targetLead);
+          routeCache.set(edge.id, { key: routingKey, points: routedPoints });
+        }
+        if (routedPoints) routeSegmentsAsObstacles(routedPoints).forEach((obstacle, index) => addSpatialObstacle(lineObstacleIndex, { ...obstacle, id: `${edge.id}:${index}` }));
       }
       return {
         ...edge,
@@ -2417,14 +2551,16 @@ function FlowCanvas() {
           targetColor: nodeById.get(edge.target)?.data?.color || NODE_COLORS[0],
           relatedHighlighted: selectedNodeIds.has(edge.source) || selectedNodeIds.has(edge.target),
           cutPoint: edgeCutPoints[edge.id],
-          routingObstacles,
+          routingObstacles: localRoutingObstacles,
           routedPoints,
+          routingKey,
+          routingComputed: Boolean(sourceGeometry && targetGeometry),
           sourceLead,
           targetLead,
         },
       };
     });
-  }, [nodes, edges, edgeCutPoints, renderedNodeLayoutById]);
+  }, [nodes, edges, edgeCutPoints, renderedNodeLayoutById, routingDragNodeIds]);
   const fullZoomCompensation = Math.max(1, 1 / viewportZoom);
   const connectorScale = Math.min(6.7, 1 + (fullZoomCompensation - 1) * 0.3);
   const connectorStyle = {
@@ -2443,7 +2579,6 @@ function FlowCanvas() {
   const edgeActions = useMemo(() => ({ removeEdge }), [removeEdge]);
 
   return (
-    <LanguageContext.Provider value={{ language, t }}>
     <NodeActionsContext.Provider value={actions}>
       <EdgeActionsContext.Provider value={edgeActions}>
       <main className={`app-shell theme-${theme}`} style={connectorStyle}>
@@ -2485,7 +2620,8 @@ function FlowCanvas() {
             onEdgeClick={onEdgeClick}
             onEdgeContextMenu={openEdgeMenu}
             onNodeContextMenu={openJoinMenu}
-            onNodeDragStop={rememberDuplicateSpacing}
+            onNodeDragStart={beginNodeRoutingDrag}
+            onNodeDragStop={finishNodeRoutingDrag}
             onPaneClick={() => { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); }}
             onNodeClick={() => { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); }}
             onMoveStart={() => { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); }}
@@ -2583,12 +2719,6 @@ function FlowCanvas() {
             <section className="settings-panel" role="dialog" aria-modal="true" aria-label={t('MergeBoard Settings', 'CÃ i Ä‘áº·t MergeBoard')}>
               <header><div><Settings size={18} /><span><strong>{t('Settings', 'CÃ i Ä‘áº·t')}</strong><small>MergeBoard workspace</small></span></div><button onClick={() => setSettingsOpen(false)} disabled={choosingAssetFolder} aria-label={t('Close settings', 'ÄÃ³ng cÃ i Ä‘áº·t')}><X size={16} /></button></header>
               <div className="settings-content">
-                <div className="settings-label"><Languages size={15} /><span><strong>{t('Language', 'NgÃ´n ngá»¯')}</strong><small>{t('Choose the interface language.', 'Chá»n ngÃ´n ngá»¯ hiá»ƒn thá»‹ cá»§a giao diá»‡n.')}</small></span></div>
-                <div className="language-options" role="radiogroup" aria-label={t('Interface language', 'NgÃ´n ngá»¯ giao diá»‡n')}>
-                  <button className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')} role="radio" aria-checked={language === 'en'}>English</button>
-                  <button className={language === 'vi' ? 'active' : ''} onClick={() => setLanguage('vi')} role="radio" aria-checked={language === 'vi'}>Tiáº¿ng Viá»‡t</button>
-                </div>
-                <div className="settings-divider" />
                 <div className="settings-label"><FolderOpen size={15} /><span><strong>{t('Project storage folder', 'Folder lÆ°u Project')}</strong><small>{t('Each project is an independent folder containing nodes, text, and assets.', 'Má»—i project lÃ  má»™t folder Ä‘á»™c láº­p, gá»“m há»‡ thá»‘ng node, text vÃ  toÃ n bá»™ asset.')}</small></span></div>
                 <div className="settings-path" title={appSettings?.projectRoot || ''}>{appSettings?.projectRoot || t('No folder connected', 'ChÆ°a káº¿t ná»‘i folder')}</div>
                 <button className="choose-folder-button" onClick={chooseProjectFolder} disabled={choosingAssetFolder}><FolderOpen size={16} /><span>{choosingAssetFolder ? t('Waiting for folder selectionâ€¦', 'Äang chá» báº¡n chá»n folder...') : t('Choose folder', 'Chá»n folder')}</span></button>
@@ -2601,7 +2731,6 @@ function FlowCanvas() {
       </main>
       </EdgeActionsContext.Provider>
     </NodeActionsContext.Provider>
-    </LanguageContext.Provider>
   );
 }
 
