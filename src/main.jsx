@@ -37,6 +37,7 @@ import {
   Layers3,
   Languages,
   Menu,
+  MessageSquare,
   Merge,
   Maximize2,
   Minimize2,
@@ -197,6 +198,71 @@ function removeDuplicateInputEdges(nodes, graphEdges) {
   return acceptedEdges;
 }
 
+function bridgeDeletedJoinPoints(nodes, graphEdges, deletedNodeIds) {
+  const deletedIds = new Set(deletedNodeIds);
+  const deletedJoinIds = new Set(nodes.filter((node) => deletedIds.has(node.id) && node.type === 'joinNode').map((node) => node.id));
+  if (!deletedJoinIds.size) return graphEdges.filter((edge) => !deletedIds.has(edge.source) && !deletedIds.has(edge.target));
+
+  const incomingByTarget = new Map();
+  const outgoingBySource = new Map();
+  graphEdges.forEach((edge) => {
+    if (!incomingByTarget.has(edge.target)) incomingByTarget.set(edge.target, []);
+    if (!outgoingBySource.has(edge.source)) outgoingBySource.set(edge.source, []);
+    incomingByTarget.get(edge.target).push(edge);
+    outgoingBySource.get(edge.source).push(edge);
+  });
+
+  const collectUpstream = (nodeId, visited = new Set()) => {
+    if (visited.has(nodeId)) return [];
+    const nextVisited = new Set(visited).add(nodeId);
+    return (incomingByTarget.get(nodeId) || []).flatMap((edge) => {
+      if (deletedJoinIds.has(edge.source)) return collectUpstream(edge.source, nextVisited);
+      if (deletedIds.has(edge.source)) return [];
+      return [{ nodeId: edge.source, edge }];
+    });
+  };
+
+  const collectDownstream = (nodeId, visited = new Set()) => {
+    if (visited.has(nodeId)) return [];
+    const nextVisited = new Set(visited).add(nodeId);
+    return (outgoingBySource.get(nodeId) || []).flatMap((edge) => {
+      if (deletedJoinIds.has(edge.target)) return collectDownstream(edge.target, nextVisited);
+      if (deletedIds.has(edge.target)) return [];
+      return [{ nodeId: edge.target, edge }];
+    });
+  };
+
+  const remainingEdges = graphEdges.filter((edge) => !deletedIds.has(edge.source) && !deletedIds.has(edge.target));
+  const existingPairs = new Set(remainingEdges.map((edge) => `${edge.source}->${edge.target}`));
+  const bridgedEdges = [];
+  deletedJoinIds.forEach((joinId) => {
+    const upstream = collectUpstream(joinId);
+    const downstream = collectDownstream(joinId);
+    upstream.forEach((input) => {
+      downstream.forEach((output) => {
+        if (input.nodeId === output.nodeId) return;
+        const pairKey = `${input.nodeId}->${output.nodeId}`;
+        if (existingPairs.has(pairKey)) return;
+        existingPairs.add(pairKey);
+        const edgeId = `edge-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const inputColor = input.edge.data?.color || 'gradient';
+        const outputColor = output.edge.data?.color || 'gradient';
+        bridgedEdges.push({
+          id: edgeId,
+          source: input.nodeId,
+          target: output.nodeId,
+          sourceHandle: `out-${edgeId}`,
+          targetHandle: `in-${edgeId}`,
+          type: 'beam',
+          data: { color: inputColor === outputColor ? inputColor : 'gradient' },
+        });
+      });
+    });
+  });
+
+  return [...remainingEdges, ...bridgedEdges];
+}
+
 const INPUT_KIND_PRIORITY = { example: 0, image: 1, text: 2 };
 function sortInputTitles(items) {
   return [...items].sort((first, second) => (INPUT_KIND_PRIORITY[first.kind] ?? 99) - (INPUT_KIND_PRIORITY[second.kind] ?? 99));
@@ -223,8 +289,61 @@ const sameRenderedNodeLayout = (previous, next) => previous.length === next.leng
   return node.id === candidate.id && node.x === candidate.x && node.y === candidate.y && node.width === candidate.width && node.height === candidate.height;
 });
 
-function NodeShell({ children, className = '', selected = false, color = NODE_COLORS[0], ...props }) {
-  return <article className={`node-card ${className} ${selected ? 'is-selected' : ''}`} style={{ '--node-color': color }} {...props}>{children}</article>;
+function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className = '' }) {
+  const t = useTranslation();
+  const { updateNode } = useContext(NodeActionsContext);
+  const [open, setOpen] = useState(false);
+  const textareaRef = useRef(null);
+  const hasNote = Boolean(note?.trim());
+  const fitNoteHeight = useCallback((element = textareaRef.current) => {
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight}px`;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (open) fitNoteHeight();
+  }, [fitNoteHeight, note, open]);
+
+  if (!nodeId) return null;
+  return (
+    <div
+      className={`node-note-control nodrag nopan ${open ? 'is-open' : ''} ${hasNote ? 'has-note' : ''} ${className}`}
+      style={{ '--node-color': color }}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <button
+        className="node-note-button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={open ? t('Close note', 'Đóng ghi chú') : t('Open note', 'Mở ghi chú')}
+        title={t('Note', 'Ghi chú')}
+      >
+        <MessageSquare size={14} />
+      </button>
+      {open && (
+        <div className="node-note-panel">
+          <textarea
+            ref={textareaRef}
+            className="node-note-textarea nowheel"
+            value={note || ''}
+            placeholder={t('Write a quick note…', 'Nhập ghi chú nhanh...')}
+            onChange={(event) => { updateNode(nodeId, { note: event.target.value }); fitNoteHeight(event.currentTarget); }}
+            autoFocus
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NodeShell({ children, className = '', selected = false, color = NODE_COLORS[0], nodeId = null, note = '', ...props }) {
+  return (
+    <article className={`node-card ${className} ${selected ? 'is-selected' : ''}`} style={{ '--node-color': color }} {...props}>
+      {nodeId && <NodeNoteControl nodeId={nodeId} note={note} color={color} />}
+      {children}
+    </article>
+  );
 }
 
 function PortStack({ ports = [], type, position, color, compact = false }) {
@@ -350,7 +469,7 @@ const TextNode = memo(({ id, data, selected }) => {
   };
 
   return (
-    <NodeShell selected={selected} color={color} className={`text-card mode-${viewMode}`}>
+    <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`text-card mode-${viewMode}`}>
       <NodeHeader icon={Type} eyebrow="TEXT" title={data.title} nodeId={id} accent="blue" viewMode={viewMode} color={color} />
       <div className="node-body text-node-content">
         {editing ? (
@@ -490,6 +609,8 @@ const ImageNode = memo(({ id, data, selected }) => {
       <NodeShell
         selected={selected}
         color={color}
+        nodeId={id}
+        note={data.note}
         className={`image-card mode-${viewMode} ${dragOver ? 'is-drag-over' : ''}`}
         onDragEnter={(event) => { event.preventDefault(); event.stopPropagation(); setDragOver(true); }}
         onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy'; }}
@@ -545,7 +666,7 @@ const MixerNode = memo(({ id, data, selected }) => {
   const textResource = resources.find((resource) => resource.kind === 'text');
   const color = data.color || '#7c6cf2';
   return (
-    <NodeShell selected={selected} color={color} className={`mixer-card mode-${viewMode}`}>
+    <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`mixer-card mode-${viewMode}`}>
       <div className="mixer-port-anchor">
         <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
         <NodeHeader icon={Merge} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
@@ -591,7 +712,7 @@ const ExampleNode = memo(({ id, data, selected }) => {
     finally { setUploading(false); event.target.value = ''; }
   };
   return (
-    <NodeShell selected={selected} color={color} className={`example-card mode-${viewMode}`}>
+    <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`example-card mode-${viewMode}`}>
       <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
       <NodeHeader icon={BookOpenCheck} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
       <div className="example-content nowheel">
@@ -625,6 +746,7 @@ const CanvasImageNode = memo(({ id, data, selected }) => {
   const { updateNode } = useContext(NodeActionsContext);
   return (
     <div className={`canvas-image-node ${selected ? 'is-selected' : ''}`} style={{ width: data.width || 320, height: data.height || 240 }} title={t('Free image · right-click to make a node', 'Ảnh tự do · chuột phải để Make node')}>
+      <NodeNoteControl nodeId={id} note={data.note} color="#8b7cf6" />
       <NodeResizer
         isVisible={selected}
         minWidth={80}
@@ -640,13 +762,14 @@ const CanvasImageNode = memo(({ id, data, selected }) => {
   );
 });
 
-const JoinNode = memo(({ data, selected }) => {
+const JoinNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
   const color = data.color || '#8b7cf6';
   return (
     <div className={`join-point ${selected ? 'is-selected' : ''} ${data.moveEnabled ? 'is-move-enabled' : ''}`} style={{ '--join-color': color }} title={data.moveEnabled ? t('Drag to move Join Point', 'Kéo để di chuyển Join Point') : 'Join Point'}>
       <Handle id="join-in" type="target" position={Position.Left} className="join-unified-handle join-target-zone" aria-label={t('Join Point input', 'Đầu nhận Join Point')} title={t('Input', 'Đầu nhận')} />
       <Handle id="join-out" type="source" position={Position.Right} className="join-unified-handle join-source-zone" aria-label={t('Join Point output', 'Đầu ra Join Point')} title={t('Output', 'Đầu ra')} />
+      <NodeNoteControl nodeId={id} note={data.note} color={color} className="join-note-control" />
       <Waypoints size={16} strokeWidth={2.6} />
     </div>
   );
@@ -656,10 +779,23 @@ const SectionNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
   const { updateNode, removeNode } = useContext(NodeActionsContext);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const actionsRef = useRef(null);
   const color = data.color || '#3b82f6';
   const titleScale = Math.min(20, Math.max(1, 1 / (data.zoom || 1)));
+
+  useEffect(() => {
+    if (!paletteOpen) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (actionsRef.current?.contains(event.target)) return;
+      setPaletteOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+  }, [paletteOpen]);
+
   return (
     <section className={`section-frame ${selected ? 'is-selected' : ''}`} style={{ width: data.width || 420, height: data.height || 260, '--section-color': color }}>
+      <NodeNoteControl nodeId={id} note={data.note} color={color} />
       <NodeResizer
         isVisible={selected}
         minWidth={180}
@@ -673,7 +809,7 @@ const SectionNode = memo(({ id, data, selected }) => {
         <input value={data.title || 'Section'} onChange={(event) => updateNode(id, { title: event.target.value })} aria-label={t('Section name', 'Tên Section')} />
       </div>
       {selected && !data?.relatedHighlighted && (
-        <div className="section-actions nodrag">
+        <div className="section-actions nodrag" ref={actionsRef}>
           <button onClick={() => setPaletteOpen((value) => !value)} aria-label={t('Choose Section color', 'Chọn màu Section')} title={t('Choose Section color', 'Chọn màu Section')}><Palette size={14} /></button>
           <button onClick={() => removeNode(id)} aria-label={t('Delete Section', 'Xóa Section')} title={t('Delete Section', 'Xóa Section')}><Trash2 size={14} /></button>
           {paletteOpen && <div className="section-palette">{NODE_COLORS.map((item) => <button key={item} style={{ '--swatch': item }} onClick={() => { updateNode(id, { color: item }); setPaletteOpen(false); }} aria-label={t(`Section color ${item}`, `Màu Section ${item}`)} />)}</div>}
@@ -960,9 +1096,23 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
   const [deletePending, setDeletePending] = useState(null);
+  const managerRef = useRef(null);
   const active = projects.find((project) => project.id === activeProjectId);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (managerRef.current?.contains(event.target)) return;
+      setOpen(false);
+      setEditingId(null);
+      setDeletePending(null);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+  }, [open]);
+
   return (
-    <div className="project-manager">
+    <div className="project-manager" ref={managerRef}>
       <button className="project-current" onClick={() => setOpen((value) => !value)} aria-label={t('Project list', 'Danh sách project')}>
         <span className="project-folder"><FolderKanban size={15} /></span>
         <span><strong>{active?.name || t('Loading…', 'Đang tải...')}</strong><small>{active?.folder || t('Project storage', 'Bộ nhớ project')}</small></span>
@@ -1080,8 +1230,23 @@ function FlowCanvas() {
   const historyTimerRef = useRef(null);
   const historyApplyingRef = useRef(false);
   const latestSnapshotRef = useRef(null);
+  const duplicateDeltaRef = useRef({ x: 42, y: 42 });
+  const pendingDuplicateRef = useRef(null);
   const { screenToFlowPosition, fitView, getNode, setCenter, getViewport, setViewport } = useReactFlow();
   const renderedNodeLayout = useStore(selectRenderedNodeLayout, sameRenderedNodeLayout);
+
+  useEffect(() => {
+    if (!contextMenu && !edgeMenu && !joinMenu && !canvasImageMenu) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (event.target?.closest?.('.canvas-context-menu, .edge-color-menu')) return;
+      setContextMenu(null);
+      setEdgeMenu(null);
+      setJoinMenu(null);
+      setCanvasImageMenu(null);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+  }, [canvasImageMenu, contextMenu, edgeMenu, joinMenu]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1502,9 +1667,9 @@ function FlowCanvas() {
 
   const removeNode = useCallback((id) => {
     setNodes((current) => current.filter((node) => node.id !== id));
-    setEdges((current) => current.filter((edge) => edge.source !== id && edge.target !== id));
+    setEdges((current) => bridgeDeletedJoinPoints(nodes, current, [id]));
     showToast(t('Node deleted', 'Đã xóa node'));
-  }, [showToast, t]);
+  }, [nodes, showToast, t]);
 
   const removeEdge = useCallback((id) => {
     setEdges((current) => current.filter((edge) => edge.id !== id));
@@ -1532,7 +1697,15 @@ function FlowCanvas() {
     }
   }, [showToast, t]);
 
-  const onNodesChange = useCallback((changes) => setNodes((current) => applyNodeChanges(changes, current)), []);
+  const onNodesChange = useCallback((changes) => {
+    const deletedNodeIds = changes.filter((change) => change.type === 'remove').map((change) => change.id);
+    setNodes((current) => {
+      if (deletedNodeIds.length) {
+        setEdges((currentEdges) => bridgeDeletedJoinPoints(current, currentEdges, deletedNodeIds));
+      }
+      return applyNodeChanges(changes, current);
+    });
+  }, []);
   const onEdgesChange = useCallback((changes) => setEdges((current) => applyEdgeChanges(changes, current)), []);
   const setEdgeColor = useCallback((edgeId, color) => {
     setEdges((current) => current.map((edge) => edge.id === edgeId ? { ...edge, data: { ...(edge.data || {}), color } } : edge));
@@ -1654,16 +1827,51 @@ function FlowCanvas() {
       return;
     }
     const timestamp = Date.now();
+    const delta = duplicateDeltaRef.current;
     const copies = selectedNodes.map((node, index) => ({
       ...node,
       id: `${node.type}-${timestamp}-${index}`,
-      position: { x: node.position.x + 42 + index * 10, y: node.position.y + 42 + index * 10 },
+      position: { x: node.position.x + delta.x, y: node.position.y + delta.y },
       selected: true,
       data: { ...node.data, title: `${node.data.title || 'Node'} · ${t('copy', 'bản sao')}` },
     }));
+    pendingDuplicateRef.current = {
+      pairs: selectedNodes.map((node, index) => ({
+        sourceId: node.id,
+        copyId: copies[index].id,
+        sourcePosition: { x: node.position.x, y: node.position.y },
+      })),
+    };
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), ...copies]);
     showToast(t(`Duplicated ${copies.length} node(s)`, `Đã nhân bản ${copies.length} node`));
   }, [nodes, showToast, t]);
+
+  const rememberDuplicateSpacing = useCallback((_event, node, draggedNodes = []) => {
+    if (node.id === movableJoinId) setMovableJoinId(null);
+    const pending = pendingDuplicateRef.current;
+    if (!pending?.pairs?.length) return;
+    const draggedList = Array.isArray(draggedNodes) && draggedNodes.length ? draggedNodes : [node];
+    const draggedIds = new Set(draggedList.map((item) => item.id));
+    if (!pending.pairs.some((pair) => draggedIds.has(pair.copyId))) return;
+    const currentPositions = new Map(nodes.map((item) => [item.id, item.position]));
+    draggedList.forEach((item) => currentPositions.set(item.id, item.position));
+    const deltas = pending.pairs
+      .map((pair) => {
+        const position = currentPositions.get(pair.copyId);
+        if (!position) return null;
+        return {
+          x: position.x - pair.sourcePosition.x,
+          y: position.y - pair.sourcePosition.y,
+        };
+      })
+      .filter(Boolean);
+    if (!deltas.length) return;
+    const average = deltas.reduce((sum, delta) => ({ x: sum.x + delta.x, y: sum.y + delta.y }), { x: 0, y: 0 });
+    duplicateDeltaRef.current = {
+      x: Math.round((average.x / deltas.length) * 100) / 100,
+      y: Math.round((average.y / deltas.length) * 100) / 100,
+    };
+  }, [movableJoinId, nodes]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -2169,7 +2377,7 @@ function FlowCanvas() {
             onEdgeClick={onEdgeClick}
             onEdgeContextMenu={openEdgeMenu}
             onNodeContextMenu={openJoinMenu}
-            onNodeDragStop={(_event, node) => { if (node.id === movableJoinId) setMovableJoinId(null); }}
+            onNodeDragStop={rememberDuplicateSpacing}
             onPaneClick={() => { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); }}
             onNodeClick={() => { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); }}
             onMoveStart={() => { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); }}
