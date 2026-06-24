@@ -877,10 +877,12 @@ const ExampleNode = memo(({ id, data, selected }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [imageDimensions, setImageDimensions] = useState({ width: data.imageWidth || 0, height: data.imageHeight || 0 });
   const textEditorRef = useRef(null);
+  const updateNodeInternals = useUpdateNodeInternals();
   const viewMode = data.viewMode || 'expanded';
   const inputTitles = data.inputTitles || [];
   const inputImageCount = inputTitles.filter((item) => item.kind === 'image' || item.kind === 'example').length;
   const inputTextCount = inputTitles.filter((item) => item.kind === 'text').length;
+  const inputTitleListText = inputTitles.map((item) => item.title || t('Untitled node', 'Node chÆ°a Ä‘áº·t tÃªn')).join('\n');
   const color = data.color || '#10b981';
   const exampleText = data.content || '';
   const exampleMode = data.exampleMode || (data.image ? 'image' : exampleText ? 'text' : '');
@@ -900,6 +902,9 @@ const ExampleNode = memo(({ id, data, selected }) => {
     textEditorRef.current.style.height = 'auto';
     textEditorRef.current.style.height = `${textEditorRef.current.scrollHeight}px`;
   }, [editingText, exampleText, viewMode]);
+  useLayoutEffect(() => {
+    requestAnimationFrame(() => updateNodeInternals(id));
+  }, [id, inputTitles.length, inputTitleListText, exampleMode, exampleText, data.image, viewMode, updateNodeInternals]);
   const beginTextEditing = (event) => {
     event?.stopPropagation();
     if (!exampleMode) updateNode(id, { exampleMode: 'text', image: '', assetFile: '', fileName: '', imageWidth: 0, imageHeight: 0 });
@@ -964,6 +969,9 @@ const ExampleNode = memo(({ id, data, selected }) => {
         </section>
       </div>
       <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
+      <div className="node-border-copy example-input-title-copy" title={t('Copy input node title list')}>
+        <CopyButton value={inputTitleListText} />
+      </div>
     </NodeShell>
     <ExampleImageLightbox open={previewOpen} onClose={closePreview} image={data.image} title={data.title} fileName={data.fileName} assetFile={data.assetFile} dimensions={imageDimensions} revealAsset={revealAsset} />
     </>
@@ -1339,30 +1347,30 @@ const BeamEdge = memo(({
   const edgeStroke = isGradient ? `url(#${gradientId})` : color;
   const connectionHighlighted = selected || Boolean(data?.relatedHighlighted);
   const [edgePath, labelX, labelY] = useMemo(() => {
-    const sourcePoint = { x: sourceX, y: sourceY };
-    const targetPoint = { x: targetX, y: targetY };
+    const sourcePoint = data?.sourcePoint || { x: sourceX, y: sourceY };
+    const targetPoint = data?.targetPoint || { x: targetX, y: targetY };
     const obstacles = data?.routingObstacles || [];
     const plannedRoute = data?.routingComputed
       ? data?.routedPoints
       : (data?.routedPoints || makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead, data?.sourceDirection, data?.targetDirection));
-    if (!plannedRoute) return getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 18 }).slice(0, 3);
+    if (!plannedRoute) return getSmoothStepPath({ sourceX: sourcePoint.x, sourceY: sourcePoint.y, targetX: targetPoint.x, targetY: targetPoint.y, sourcePosition, targetPosition, borderRadius: 18 }).slice(0, 3);
     let route = plannedRoute.map((point, index) => index === 0 ? sourcePoint : index === plannedRoute.length - 1 ? targetPoint : point);
     const hasDiagonal = route.slice(1).some((point, index) => point.x !== route[index].x && point.y !== route[index].y);
     if (hasDiagonal) {
       const correctedRoute = makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead, data?.sourceDirection, data?.targetDirection);
-      if (!correctedRoute) return getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 18 }).slice(0, 3);
+      if (!correctedRoute) return getSmoothStepPath({ sourceX: sourcePoint.x, sourceY: sourcePoint.y, targetX: targetPoint.x, targetY: targetPoint.y, sourcePosition, targetPosition, borderRadius: 18 }).slice(0, 3);
       route = correctedRoute;
     }
     const midpoint = routeMidpoint(route);
     return [roundedRoutePath(route), midpoint.x, midpoint.y];
-  }, [data?.routedPoints, data?.routingKey, source, sourcePosition, sourceX, sourceY, target, targetPosition, targetX, targetY]);
+  }, [data?.routedPoints, data?.routingKey, data?.sourcePoint, data?.targetPoint, source, sourcePosition, sourceX, sourceY, target, targetPosition, targetX, targetY]);
   const cutX = data?.cutPoint?.x ?? labelX;
   const cutY = data?.cutPoint?.y ?? labelY;
 
   return (
     <>
       <defs>
-        {isGradient && <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}><stop offset="0%" stopColor={sourceColor} /><stop offset="100%" stopColor={targetColor} /></linearGradient>}
+        {isGradient && <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={data?.sourcePoint?.x ?? sourceX} y1={data?.sourcePoint?.y ?? sourceY} x2={data?.targetPoint?.x ?? targetX} y2={data?.targetPoint?.y ?? targetY}><stop offset="0%" stopColor={sourceColor} /><stop offset="100%" stopColor={targetColor} /></linearGradient>}
       </defs>
       <BaseEdge id={id} path={edgePath} className={`beam-edge ${connectionHighlighted ? 'is-active' : ''}`} style={{ stroke: edgeStroke }} interactionWidth={32} />
       {connectionHighlighted && <path d={edgePath} className="beam-selection-glow" style={{ stroke: edgeStroke }} />}
@@ -3031,6 +3039,8 @@ function FlowCanvas() {
       let targetDirection = -1;
       let localRoutingObstacles = routingObstacles;
       let routingKey = edge.id;
+      let renderSourcePoint = null;
+      let renderTargetPoint = null;
       if (sourceGeometry && targetGeometry) {
         const sourcePlacement = sourcePlacements.get(edge.id) || { offset: 0, index: 0 };
         const targetPlacement = targetPlacements.get(edge.id) || { offset: 0, index: 0 };
@@ -3042,6 +3052,8 @@ function FlowCanvas() {
         targetDirection = targetJoinReversed ? 1 : -1;
         const sourcePoint = { x: sourceJoinReversed ? sourceGeometry.x : sourceGeometry.x + sourceGeometry.width, y: sourceGeometry.y + sourceGeometry.height / 2 + sourcePlacement.offset };
         const targetPoint = { x: targetJoinReversed ? targetGeometry.x + targetGeometry.width : targetGeometry.x, y: targetGeometry.y + targetGeometry.height / 2 + targetPlacement.offset };
+        renderSourcePoint = sourcePoint;
+        renderTargetPoint = targetPoint;
         const nodeSearchBounds = routingSearchBounds(sourcePoint, targetPoint, 280);
         const lineSearchBounds = routingSearchBounds(sourcePoint, targetPoint, 100);
         localRoutingObstacles = querySpatialObstacles(nodeObstacleIndex, nodeSearchBounds);
@@ -3071,6 +3083,8 @@ function FlowCanvas() {
           routedPoints,
           routingKey,
           routingComputed: Boolean(sourceGeometry && targetGeometry),
+          sourcePoint: renderSourcePoint,
+          targetPoint: renderTargetPoint,
           sourceLead,
           targetLead,
           sourceDirection,

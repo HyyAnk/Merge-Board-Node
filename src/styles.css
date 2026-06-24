@@ -209,6 +209,9 @@ button { color: inherit; }
 .example-title-link { min-width: 0; flex: 1; padding: 2px 0; overflow-wrap: anywhere; color: inherit; background: transparent; border: 0; cursor: pointer; font: inherit; text-align: left; }
 .example-title-link:hover { color: var(--node-color); text-decoration: underline; text-underline-offset: 3px; }
 .example-empty { padding: 18px 9px; color: #8a9892; border: 1px dashed #cfded6; border-radius: 8px; font-size: 9px; line-height: 1.45; text-align: center; }
+.example-input-title-copy { right: 48px; }
+.example-input-title-copy .copy-button { color: var(--node-color); background: color-mix(in srgb, var(--node-color) 10%, white); border-color: color-mix(in srgb, var(--node-color) 32%, transparent); }
+.example-input-title-copy .copy-button:hover { color: var(--node-color); background: color-mix(in srgb, var(--node-color) 18%, white); border-color: color-mix(in srgb, var(--node-color) 48%, transparent); }
 .mixer-input-list { margin: 9px; background: #f9f8fd; border-color: #e4dff3; }
 .mixer-card { width: 322px; border-color: #dcd7f3; }
 .mixer-card .node-header { background: linear-gradient(135deg, #fbfaff, #f6f4ff); border-radius: 16px 16px 0 0; }
@@ -580,6 +583,8 @@ button { color: inherit; }
 .theme-dark .mixer-text-segment.tone-a { color: #d1d9ed; background: rgba(91,128,201,.12); }
 .theme-dark .mixer-text-segment.tone-b { color: #e0cfe3; background: rgba(164,101,177,.12); }
 .theme-dark .mixer-image-copy .copy-button { color: white; background: rgba(18,17,22,.68); border-color: rgba(255,255,255,.2); }
+.theme-dark .example-input-title-copy .copy-button { color: var(--node-color); background: color-mix(in srgb, var(--node-color) 13%, #29262f); border-color: color-mix(in srgb, var(--node-color) 42%, #48434f); }
+.theme-dark .example-input-title-copy .copy-button:hover { background: color-mix(in srgb, var(--node-color) 22%, #29262f); border-color: color-mix(in srgb, var(--node-color) 58%, #48434f); }
 .theme-dark .node-floating-title > svg { color: var(--node-color); }
 .theme-dark .color-trigger, .theme-dark .view-mode-toggle, .theme-dark .node-note-button { color: var(--node-color); background: color-mix(in srgb, var(--node-color) 13%, rgba(31,29,36,.94)); border-color: color-mix(in srgb, var(--node-color) 45%, #302d36); box-shadow: 0 5px 15px rgba(0,0,0,.34); }
 .theme-dark .color-trigger:hover, .theme-dark .view-mode-toggle:hover, .theme-dark .node-note-button:hover, .theme-dark .node-note-control.is-open .node-note-button { background: color-mix(in srgb, var(--node-color) 22%, #29262f); }
