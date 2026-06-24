@@ -318,6 +318,56 @@ const sameNoteNodeLayout = (previous, next) => previous?.x === next?.x
   && previous?.width === next?.width
   && previous?.height === next?.height;
 
+function setTextareaCaretFromPoint(textarea, clientX, clientY) {
+  if (!textarea) return false;
+  try {
+    textarea.focus();
+    if (typeof document.caretPositionFromPoint === 'function') {
+      const position = document.caretPositionFromPoint(clientX, clientY);
+      if (position?.offsetNode === textarea.firstChild || position?.offsetNode === textarea) {
+        textarea.setSelectionRange(position.offset, position.offset);
+        return true;
+      }
+    }
+    if (typeof document.caretRangeFromPoint === 'function') {
+      const range = document.caretRangeFromPoint(clientX, clientY);
+      if (range?.startContainer === textarea.firstChild || range?.startContainer === textarea) {
+        textarea.setSelectionRange(range.startOffset, range.startOffset);
+        return true;
+      }
+    }
+  } catch {
+    // Browser caret APIs are best-effort only.
+  }
+  return false;
+}
+
+function textOffsetFromPoint(root, clientX, clientY) {
+  try {
+    const caret = typeof document.caretPositionFromPoint === 'function'
+      ? document.caretPositionFromPoint(clientX, clientY)
+      : null;
+    const range = caret
+      ? { startContainer: caret.offsetNode, startOffset: caret.offset }
+      : typeof document.caretRangeFromPoint === 'function'
+        ? document.caretRangeFromPoint(clientX, clientY)
+        : null;
+    const container = range?.startContainer;
+    if (!root || !container || !root.contains(container)) return null;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let offset = 0;
+    let textNode = walker.nextNode();
+    while (textNode) {
+      if (textNode === container) return offset + range.startOffset;
+      offset += textNode.textContent?.length || 0;
+      textNode = walker.nextNode();
+    }
+  } catch {
+    // Best-effort browser caret lookup.
+  }
+  return null;
+}
+
 function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className = '', selected = false }) {
   const t = useTranslation();
   const { updateNode } = useContext(NodeActionsContext);
@@ -343,6 +393,15 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
   useLayoutEffect(() => {
     if (open) fitNoteHeight();
   }, [fitNoteHeight, note, open]);
+
+  const focusNoteAtPoint = useCallback((event) => {
+    event.stopPropagation();
+    requestAnimationFrame(() => {
+      if (!setTextareaCaretFromPoint(textareaRef.current, event.clientX, event.clientY)) {
+        textareaRef.current?.focus();
+      }
+    });
+  }, []);
 
   if (!nodeId) return null;
   return (
@@ -371,6 +430,7 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
             }}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
+            onDoubleClick={focusNoteAtPoint}
           >
             <textarea
               ref={textareaRef}
@@ -378,6 +438,7 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
               value={note || ''}
               placeholder={t('Write a quick noteâ€¦', 'Nháº­p ghi chÃº nhanh...')}
               onChange={(event) => { updateNode(nodeId, { note: event.target.value }); fitNoteHeight(event.currentTarget); }}
+              onDoubleClick={focusNoteAtPoint}
               autoFocus
             />
           </div>
@@ -434,11 +495,18 @@ function PortStack({ ports = [], type, position, color, compact = false }) {
   });
 }
 
-function NodeHeader({ icon: Icon, title, nodeId, viewMode = 'expanded', color = NODE_COLORS[0], hideTitle = false }) {
+function NodeHeader({ title, nodeId, viewMode = 'expanded', color = NODE_COLORS[0], hideTitle = false }) {
   const t = useTranslation();
   const { updateNode } = useContext(NodeActionsContext);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const actionsRef = useRef(null);
+  const titleRef = useRef(null);
+  useLayoutEffect(() => {
+    const element = titleRef.current;
+    if (!element || hideTitle) return;
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight}px`;
+  }, [title, hideTitle]);
   useEffect(() => {
     if (!paletteOpen) return undefined;
     const closeOnOutsidePointer = (event) => {
@@ -451,12 +519,13 @@ function NodeHeader({ icon: Icon, title, nodeId, viewMode = 'expanded', color = 
     <header className="node-header">
       {!hideTitle && (
         <div className="node-floating-title nodrag">
-          <Icon size={14} strokeWidth={2.4} />
-          <input
+          <textarea
+            ref={titleRef}
             className="node-title"
             value={title}
             aria-label={t('Node name')}
             onChange={(event) => updateNode(nodeId, { title: event.target.value })}
+            rows={1}
           />
         </div>
       )}
@@ -502,6 +571,7 @@ const TextNode = memo(({ id, data, selected }) => {
   const viewMode = data.viewMode || 'expanded';
   const color = data.color || '#3b82f6';
   const editorRef = useRef(null);
+  const pendingCaretOffsetRef = useRef(null);
   const [editing, setEditing] = useState(false);
 
   useLayoutEffect(() => {
@@ -516,8 +586,18 @@ const TextNode = memo(({ id, data, selected }) => {
 
   const beginEditing = (event) => {
     event.stopPropagation();
+    pendingCaretOffsetRef.current = textOffsetFromPoint(event.currentTarget, event.clientX, event.clientY);
     setEditing(true);
-    requestAnimationFrame(() => editorRef.current?.focus());
+    requestAnimationFrame(() => {
+      const textarea = editorRef.current;
+      const offset = pendingCaretOffsetRef.current;
+      pendingCaretOffsetRef.current = null;
+      textarea?.focus();
+      if (textarea && Number.isFinite(offset)) {
+        const clampedOffset = Math.max(0, Math.min(textarea.value.length, offset));
+        textarea.setSelectionRange(clampedOffset, clampedOffset);
+      }
+    });
   };
 
   return (
