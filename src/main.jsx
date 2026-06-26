@@ -179,7 +179,7 @@ function findGraphInputDuplicates(nodes, graphEdges) {
     if (visited.has(nodeId)) return new Set();
     const node = nodeById.get(nodeId);
     if (!node) return new Set();
-    if (['textNode', 'imageNode', 'exampleNode'].includes(node.type)) return new Set([node.id]);
+    if (['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(node.type)) return new Set([node.id]);
     const nextVisited = new Set(visited).add(nodeId);
     const lineage = new Set();
     graphEdges.filter((edge) => edge.target === nodeId).forEach((edge) => {
@@ -495,7 +495,7 @@ function PortStack({ ports = [], type, position, color, compact = false }) {
   });
 }
 
-function NodeHeader({ title, nodeId, viewMode = 'expanded', color = NODE_COLORS[0], hideTitle = false }) {
+function NodeHeader({ title, nodeId, viewMode = 'expanded', color = NODE_COLORS[0], hideTitle = false, topContent = null }) {
   const t = useTranslation();
   const { updateNode } = useContext(NodeActionsContext);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -518,15 +518,18 @@ function NodeHeader({ title, nodeId, viewMode = 'expanded', color = NODE_COLORS[
   return (
     <header className="node-header">
       {!hideTitle && (
-        <div className="node-floating-title nodrag">
-          <textarea
-            ref={titleRef}
-            className="node-title"
-            value={title}
-            aria-label={t('Node name')}
-            onChange={(event) => updateNode(nodeId, { title: event.target.value })}
-            rows={1}
-          />
+        <div className={`node-floating-title nodrag ${topContent ? 'has-top-content' : ''}`}>
+          {topContent}
+          <div className="node-title-line">
+            <textarea
+              ref={titleRef}
+              className="node-title"
+              value={title}
+              aria-label={t('Node name')}
+              onChange={(event) => updateNode(nodeId, { title: event.target.value })}
+              rows={1}
+            />
+          </div>
         </div>
       )}
       <div ref={actionsRef} className="node-actions nodrag" onMouseLeave={() => setPaletteOpen(false)}>
@@ -622,6 +625,89 @@ const TextNode = memo(({ id, data, selected }) => {
       </div>
       <span className="node-external-meta">{data.content.length} {t('characters', 'kÃ½ tá»±')}</span>
       <div className="node-border-copy"><CopyButton value={data.content} /></div>
+      <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
+    </NodeShell>
+  );
+});
+
+const CarouselNode = memo(({ id, data, selected }) => {
+  const t = useTranslation();
+  const { uploadCarouselImage, updateNode } = useContext(NodeActionsContext);
+  const editorRef = useRef(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const viewMode = data.viewMode || 'expanded';
+  const color = data.color || '#06b6d4';
+  const images = Array.isArray(data.images) ? data.images : [];
+  const content = data.content || '';
+  const uploadCardImage = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await uploadCarouselImage(id, file);
+    event.target.value = '';
+  };
+  const removeCard = (cardId) => updateNode(id, { images: images.filter((item) => item.id !== cardId) });
+  useEffect(() => {
+    if (images.length <= 1) return undefined;
+    const timer = window.setInterval(() => setActiveIndex((index) => (index + 1) % images.length), 5200);
+    return () => window.clearInterval(timer);
+  }, [images.length]);
+  useEffect(() => {
+    if (activeIndex >= images.length) setActiveIndex(0);
+  }, [activeIndex, images.length]);
+  const showcaseSlots = [-1, 0, 1, 2];
+  const showcaseCards = showcaseSlots.map((offset) => {
+    const position = offset === 0 ? 'center' : offset === -1 ? 'left' : offset === 1 ? 'right' : 'back';
+    if (!images.length) return { id: `empty-${offset}`, empty: true, position };
+    if (images.length === 1 && offset !== 0) return { id: `empty-${offset}`, empty: true, position };
+    const index = (activeIndex + offset + images.length) % images.length;
+    return { ...images[index], position };
+  });
+  useLayoutEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (viewMode === 'expanded') {
+      editor.style.height = 'auto';
+      editor.style.height = `${editor.scrollHeight}px`;
+    } else {
+      editor.style.height = '';
+    }
+  }, [content, viewMode]);
+  return (
+    <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`carousel-card mode-${viewMode}`}>
+      <NodeHeader
+        title={data.title}
+        nodeId={id}
+        viewMode={viewMode}
+        color={color}
+        topContent={(
+          <div className={`carousel-showcase ${images.length > 1 ? 'is-cycling' : ''} ${images.length > 3 ? 'has-back-card' : ''}`}>
+            {showcaseCards.map((card, index) => (
+              card.empty ? (
+                <label className={`carousel-showcase-card is-empty is-${card.position} nodrag`} key={`${card.id}-${index}`} title={t('Add illustration image')}>
+                  <Upload size={card.position === 'center' ? 18 : 14} />
+                  <input type="file" accept="image/*" onChange={uploadCardImage} />
+                </label>
+              ) : (
+                <div className={`carousel-showcase-card is-${card.position}`} key={`${card.id}-${card.position}`}>
+                  <img src={card.image} alt={card.fileName || data.title || t('Carousel illustration')} draggable="false" />
+                  <button className="carousel-card-remove nodrag" onClick={(event) => { event.stopPropagation(); removeCard(card.id); }} aria-label={t('Remove image')} title={t('Remove image')}><X size={13} /></button>
+                </div>
+              )
+            ))}
+          </div>
+        )}
+      />
+      <div className="carousel-content">
+        <textarea
+          ref={editorRef}
+          className="carousel-text-editor nodrag nowheel"
+          value={content}
+          placeholder={'{\n  "prompt": "Write JSON text here"\n}'}
+          onChange={(event) => updateNode(id, { content: event.target.value })}
+        />
+      </div>
+      <span className="node-external-meta">{content.length} {t('characters')}</span>
+      <div className="node-border-copy"><CopyButton value={content} /></div>
       <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
     </NodeShell>
   );
@@ -1044,6 +1130,11 @@ const ExampleNode = memo(({ id, data, selected }) => {
             <div className={`example-title-row ${item.kind}`} key={item.id}>
               {item.kind === 'example' ? <BookOpenCheck size={13} /> : item.kind === 'image' ? <ImageIcon size={13} /> : <FileText size={13} />}
               <button className="example-title-link nodrag" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(item.id); }} aria-label={t(`Go to ${item.title || 'input node'}`, `Äi tá»›i ${item.title || 'node input'}`)} title={t('Go to input node', 'Äi tá»›i node input')}>{item.title || t('Untitled node', 'Node chÆ°a Ä‘áº·t tÃªn')}</button>
+              {item.previewImage && (
+                <div className="example-input-preview" aria-hidden="true">
+                  <img src={item.previewImage} alt="" draggable="false" />
+                </div>
+              )}
             </div>
           )) : <div className="example-empty">{t('Connect Text, Image, or Mixer to the left port.', 'Cáº¯m Text, Image hoáº·c Mixer vÃ o cá»•ng bÃªn trÃ¡i.')}</div>}
         </section>
@@ -1146,7 +1237,7 @@ const SectionNode = memo(({ id, data, selected }) => {
   );
 });
 
-const nodeTypes = { textNode: TextNode, imageNode: ImageNode, mixerNode: MixerNode, exampleNode: ExampleNode, canvasImageNode: CanvasImageNode, joinNode: JoinNode, sectionNode: SectionNode };
+const nodeTypes = { textNode: TextNode, carouselNode: CarouselNode, imageNode: ImageNode, mixerNode: MixerNode, exampleNode: ExampleNode, canvasImageNode: CanvasImageNode, joinNode: JoinNode, sectionNode: SectionNode };
 
 function routeAroundNodes(start, end, obstacles) {
   const xs = [...new Set([start.x, end.x, ...obstacles.flatMap((rect) => [rect.left, rect.right])])].sort((a, b) => a - b);
@@ -1582,6 +1673,7 @@ function Sidebar({ collapsed, setCollapsed, addNode, resetProject, openSettings,
 
       <nav className="node-menu">
         <button onClick={() => addNode('textNode')}><span className="menu-icon blue"><Type size={17} /></span>{!collapsed && <><span><strong>Text</strong><small>{t('Text content', 'Ná»™i dung vÄƒn báº£n')}</small></span><Plus size={15} /></>}</button>
+        <button onClick={() => addNode('carouselNode')}><span className="menu-icon blue"><FileImage size={17} /></span>{!collapsed && <><span><strong>Carousel</strong><small>{t('JSON text & images')}</small></span><Plus size={15} /></>}</button>
         <button onClick={() => addNode('imageNode')}><span className="menu-icon orange"><ImageIcon size={17} /></span>{!collapsed && <><span><strong>Image</strong><small>{t('Image & visual', 'áº¢nh & visual')}</small></span><Plus size={15} /></>}</button>
         <button onClick={() => addNode('mixerNode')}><span className="menu-icon violet"><Merge size={17} /></span>{!collapsed && <><span><strong>Mixer</strong><small>{t('Collect resources', 'Gom tÃ i nguyÃªn')}</small></span><Plus size={15} /></>}</button>
         <button onClick={() => addNode('exampleNode')}><span className="menu-icon green"><BookOpenCheck size={17} /></span>{!collapsed && <><span><strong>Example</strong><small>{t('Reference image & input', 'áº¢nh máº«u & input')}</small></span><Plus size={15} /></>}</button>
@@ -1701,7 +1793,7 @@ function FlowCanvas() {
       const sourceIds = (incomingByTarget.get(targetId) || []).flatMap((edge) => {
         const source = nodeById.get(edge.source);
         if (!source) return [];
-        if (['textNode', 'imageNode', 'exampleNode'].includes(source.type)) return [source.id];
+        if (['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(source.type)) return [source.id];
         if (['mixerNode', 'joinNode'].includes(source.type)) return collectInputSourceIds(source.id, nextVisiting);
         return [];
       });
@@ -1736,7 +1828,7 @@ function FlowCanvas() {
 
   const selectedBatchInputIds = useMemo(
     () => nodes
-      .filter((node) => ['textNode', 'imageNode', 'exampleNode', 'canvasImageNode'].includes(node.type) && node.selected)
+      .filter((node) => ['textNode', 'carouselNode', 'imageNode', 'exampleNode', 'canvasImageNode'].includes(node.type) && node.selected)
       .map((node) => node.id),
     [nodes],
   );
@@ -2039,6 +2131,29 @@ function FlowCanvas() {
     }
   }, [showToast, updateNode, activeProjectId, t]);
 
+  const uploadCarouselImage = useCallback(async (id, file) => {
+    try {
+      if (!activeProjectId) throw new Error(t('No project selected', 'ChÆ°a chá»n project'));
+      const project = projectsRef.current.find((item) => item.id === activeProjectId);
+      const uploaded = await fileStorage.uploadAsset(project, file, file.name);
+      setNodes((current) => current.map((node) => {
+        if (node.id !== id) return node;
+        const images = Array.isArray(node.data?.images) ? node.data.images : [];
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            images: [...images, { id: `carousel-card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, image: uploaded.url, assetFile: uploaded.assetFile, fileName: uploaded.fileName }],
+          },
+        };
+      }));
+      showToast(t('Image added to Carousel Node'));
+    } catch (error) {
+      showToast(error.message || t('Could not save the image', 'KhÃ´ng thá»ƒ sao lÆ°u áº£nh'), 'error');
+      throw error;
+    }
+  }, [activeProjectId, showToast, t]);
+
   const revealAsset = useCallback(async (assetFile) => {
     try {
       const project = projectsRef.current.find((item) => item.id === activeProjectId);
@@ -2140,7 +2255,7 @@ function FlowCanvas() {
 
   useEffect(() => {
     const onPaste = async (event) => {
-      if (event.target?.closest?.('input, textarea, [contenteditable="true"]')) return;
+      const editingTarget = event.target?.closest?.('input, textarea, [contenteditable="true"]');
       let files = [...(event.clipboardData?.files || [])].filter((item) => item.type.startsWith('image/'));
       if (!files.length) {
         files = [...(event.clipboardData?.items || [])]
@@ -2161,7 +2276,15 @@ function FlowCanvas() {
         }
       }
       if (!files.length) {
+        if (editingTarget) return;
         const text = event.clipboardData?.getData('text/plain');
+        const selectedCarouselNode = nodes.find((node) => node.selected && node.type === 'carouselNode');
+        if (selectedCarouselNode && String(text || '').trim()) {
+          event.preventDefault();
+          updateNode(selectedCarouselNode.id, { content: String(text).trim() });
+          showToast(t('Text pasted into the Carousel node'));
+          return;
+        }
         const selectedExampleNode = nodes.find((node) => node.selected && node.type === 'exampleNode');
         if (selectedExampleNode && String(text || '').trim()) {
           event.preventDefault();
@@ -2186,7 +2309,13 @@ function FlowCanvas() {
         if (addTextNodeFromClipboard(text)) event.preventDefault();
         return;
       }
+      const selectedCarouselNode = nodes.find((node) => node.selected && node.type === 'carouselNode');
+      if (editingTarget && !selectedCarouselNode) return;
       event.preventDefault();
+      if (selectedCarouselNode) {
+        await Promise.all(files.map((file) => uploadCarouselImage(selectedCarouselNode.id, file)));
+        return;
+      }
       const selectedExampleNode = nodes.find((node) => node.selected && node.type === 'exampleNode');
       if (selectedExampleNode) {
         const exampleMode = selectedExampleNode.data?.exampleMode
@@ -2206,7 +2335,7 @@ function FlowCanvas() {
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [addCanvasImages, addTextNodeFromClipboard, nodes, showToast, t, updateNode, uploadImage]);
+  }, [addCanvasImages, addTextNodeFromClipboard, nodes, showToast, t, updateNode, uploadCarouselImage, uploadImage]);
 
   const removeNode = useCallback((id) => {
     setNodes((current) => current.filter((node) => node.id !== id));
@@ -2264,7 +2393,7 @@ function FlowCanvas() {
       if (visited.has(nodeId)) return new Set();
       const sourceNode = nodeById.get(nodeId);
       if (!sourceNode) return new Set();
-      if (['textNode', 'imageNode', 'exampleNode'].includes(sourceNode.type)) return new Set([sourceNode.id]);
+      if (['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(sourceNode.type)) return new Set([sourceNode.id]);
       const nextVisited = new Set(visited).add(nodeId);
       const lineage = new Set();
       graphEdges.filter((edge) => edge.target === nodeId).forEach((edge) => {
@@ -2354,6 +2483,7 @@ function FlowCanvas() {
     const position = type === 'joinNode' ? { x: basePosition.x - 22, y: basePosition.y - 22 } : basePosition;
     const defaults = {
       textNode: { title: t('New Text', 'Text má»›i'), content: '', viewMode: 'expanded', color: '#3b82f6' },
+      carouselNode: { title: t('New Carousel'), content: '', images: [], viewMode: 'expanded', color: '#06b6d4' },
       imageNode: { title: t('New Image', 'áº¢nh má»›i'), image: '', fileName: '', viewMode: 'expanded', color: '#f59e0b' },
       mixerNode: { title: t('New Mixer', 'Mixer má»›i'), viewMode: 'expanded', color: '#7c6cf2' },
       exampleNode: { title: t('Example Node'), exampleMode: '', image: '', fileName: '', content: '', viewMode: 'expanded', color: '#10b981' },
@@ -2361,7 +2491,7 @@ function FlowCanvas() {
     };
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), { id, type, position, data: defaults[type], selected: true }]);
     setContextMenu(null);
-    const label = type === 'textNode' ? 'Text' : type === 'imageNode' ? 'Image' : type === 'mixerNode' ? 'Mixer' : type === 'joinNode' ? 'Join Point' : t('Example Node');
+    const label = type === 'textNode' ? 'Text' : type === 'carouselNode' ? 'Carousel' : type === 'imageNode' ? 'Image' : type === 'mixerNode' ? 'Mixer' : type === 'joinNode' ? 'Join Point' : t('Example Node');
     showToast(t(`Added ${label}`, `ÄÃ£ thÃªm ${label}`));
   }, [screenToFlowPosition, showToast, t]);
 
@@ -2535,7 +2665,7 @@ function FlowCanvas() {
   }, [screenToFlowPosition]);
 
   const openJoinMenu = useCallback((event, node) => {
-    if (!['joinNode', 'mixerNode', 'exampleNode', 'canvasImageNode'].includes(node.type)) return;
+    if (!['joinNode', 'mixerNode', 'exampleNode', 'textNode', 'canvasImageNode'].includes(node.type)) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenu(null);
@@ -2643,6 +2773,27 @@ function FlowCanvas() {
     showToast(t('Join Point converted to Mixer'));
   }, [joinMenu, renderedNodeLayoutById, showToast, t]);
 
+  const convertTextToCarousel = useCallback(() => {
+    if (!joinMenu?.nodeId || joinMenu.nodeType !== 'textNode') return;
+    setNodes((current) => current.map((node) => {
+      if (node.id !== joinMenu.nodeId) return node;
+      return {
+        ...node,
+        type: 'carouselNode',
+        data: {
+          ...node.data,
+          images: Array.isArray(node.data?.images) ? node.data.images : [],
+          viewMode: node.data?.viewMode || 'expanded',
+          color: node.data?.color || '#06b6d4',
+        },
+        selected: true,
+      };
+    }));
+    routeCacheRef.current.clear();
+    setJoinMenu(null);
+    showToast(t('Text Node converted to Carousel Node'));
+  }, [joinMenu, showToast, t]);
+
   const makeCanvasImageNode = useCallback((targetType = 'imageNode') => {
     const targetIds = canvasImageMenu?.nodeIds?.length
       ? canvasImageMenu.nodeIds
@@ -2728,7 +2879,7 @@ function FlowCanvas() {
       if (visited.has(nodeId)) return new Set();
       const sourceNode = nodeById.get(nodeId);
       if (!sourceNode) return new Set();
-      if (['textNode', 'imageNode', 'exampleNode'].includes(sourceNode.type)) return new Set([sourceNode.id]);
+      if (['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(sourceNode.type)) return new Set([sourceNode.id]);
       const nextVisited = new Set(visited).add(nodeId);
       const lineage = new Set();
       graphEdges.filter((edge) => edge.target === nodeId).forEach((edge) => {
@@ -2762,7 +2913,7 @@ function FlowCanvas() {
     let skippedCount = 0;
     sourceIds.forEach((sourceId, index) => {
       const sourceNode = nodeById.get(sourceId);
-      if (!['textNode', 'imageNode', 'exampleNode'].includes(sourceNode?.type)) {
+      if (!['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(sourceNode?.type)) {
         skippedCount += 1;
         return;
       }
@@ -2938,7 +3089,7 @@ function FlowCanvas() {
       return edges.filter((edge) => edge.target === mixerId).flatMap((edge) => {
         const source = nodeById.get(edge.source);
         if (!source) return [];
-        if (source.type === 'textNode') {
+        if (source.type === 'textNode' || source.type === 'carouselNode') {
           return [{ sourceId: source.id, kind: 'text', title: source.data.title, value: source.data.content, sourceColor: source.data.color }];
         }
         if (source.type === 'imageNode') {
@@ -2964,9 +3115,9 @@ function FlowCanvas() {
       return edges.filter((edge) => edge.target === targetId).flatMap((edge) => {
         const source = nodeById.get(edge.source);
         if (!source) return [];
-        if (source.type === 'textNode') return [{ id: source.id, kind: 'text', title: source.data.title }];
-        if (source.type === 'imageNode') return [{ id: source.id, kind: 'image', title: source.data.title }];
-        if (source.type === 'exampleNode') return [{ id: source.id, kind: 'example', title: source.data.title }];
+        if (source.type === 'textNode' || source.type === 'carouselNode') return [{ id: source.id, kind: 'text', title: source.data.title }];
+        if (source.type === 'imageNode') return [{ id: source.id, kind: 'image', title: source.data.title, previewImage: source.data.image || '' }];
+        if (source.type === 'exampleNode') return [{ id: source.id, kind: 'example', title: source.data.title, previewImage: source.data.image || '' }];
         if (['mixerNode', 'joinNode'].includes(source.type)) return collectInputNodes(source.id, nextVisited);
         return [];
       });
@@ -3187,7 +3338,7 @@ function FlowCanvas() {
     '--connector-hover-visual-scale': connectorScale * 1.14,
   };
 
-  const actions = useMemo(() => ({ updateNode, removeNode, copyResource, showToast, uploadImage, revealAsset, focusNode }), [updateNode, removeNode, copyResource, showToast, uploadImage, revealAsset, focusNode]);
+  const actions = useMemo(() => ({ updateNode, removeNode, copyResource, showToast, uploadImage, uploadCarouselImage, revealAsset, focusNode }), [updateNode, removeNode, copyResource, showToast, uploadImage, uploadCarouselImage, revealAsset, focusNode]);
   const edgeActions = useMemo(() => ({ removeEdge }), [removeEdge]);
 
   return (
@@ -3274,6 +3425,7 @@ function FlowCanvas() {
                 <>
                   <div className="context-menu-title"><span>{t('ADD NODE', 'THÃŠM NODE')}</span><kbd>Right click</kbd></div>
                   <button role="menuitem" onClick={() => addNode('textNode', contextMenu.flowPosition)}><span className="menu-icon blue"><Type size={15} /></span><span>Text</span><Plus size={13} /></button>
+                  <button role="menuitem" onClick={() => addNode('carouselNode', contextMenu.flowPosition)}><span className="menu-icon blue"><FileImage size={15} /></span><span>Carousel</span><Plus size={13} /></button>
                   <button role="menuitem" onClick={() => addNode('imageNode', contextMenu.flowPosition)}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>Image</span><Plus size={13} /></button>
                   <button role="menuitem" onClick={() => addNode('mixerNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Merge size={15} /></span><span>Mixer</span><Plus size={13} /></button>
                   <button role="menuitem" onClick={() => addNode('exampleNode', contextMenu.flowPosition)}><span className="menu-icon green"><BookOpenCheck size={15} /></span><span>Example</span><Plus size={13} /></button>
@@ -3284,13 +3436,15 @@ function FlowCanvas() {
             </div>
           )}
           {joinMenu && (
-            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={joinMenu.nodeType === 'mixerNode' ? t('Mixer options') : joinMenu.nodeType === 'exampleNode' ? t('Example options') : t('Join Point options')}>
-              <div className="context-menu-title"><span>{joinMenu.nodeType === 'mixerNode' ? 'MIXER' : joinMenu.nodeType === 'exampleNode' ? 'EXAMPLE' : 'JOIN POINT'}</span><kbd>Right click</kbd></div>
+            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={joinMenu.nodeType === 'mixerNode' ? t('Mixer options') : joinMenu.nodeType === 'exampleNode' ? t('Example options') : joinMenu.nodeType === 'textNode' ? t('Text options') : t('Join Point options')}>
+              <div className="context-menu-title"><span>{joinMenu.nodeType === 'mixerNode' ? 'MIXER' : joinMenu.nodeType === 'exampleNode' ? 'EXAMPLE' : joinMenu.nodeType === 'textNode' ? 'TEXT' : 'JOIN POINT'}</span><kbd>Right click</kbd></div>
               {selectedBatchInputIds.filter((id) => id !== joinMenu.nodeId).length > 0 && (
                 <button role="menuitem" onClick={() => connectSelectedToNode(joinMenu.nodeId)}><span className="menu-icon violet"><Waypoints size={15} /></span><span>{t(`Connect ${selectedBatchInputIds.filter((id) => id !== joinMenu.nodeId).length} selected here`)}</span><ArrowRight size={13} /></button>
               )}
               {joinMenu.nodeType === 'mixerNode' ? (
                 <button role="menuitem" onClick={convertMixerToJoin}><span className="menu-icon violet"><Waypoints size={15} /></span><span>{t('Convert to Join Point')}</span><ArrowRight size={13} /></button>
+              ) : joinMenu.nodeType === 'textNode' ? (
+                <button role="menuitem" onClick={convertTextToCarousel}><span className="menu-icon blue"><FileImage size={15} /></span><span>{t('Convert to Carousel Node')}</span><ArrowRight size={13} /></button>
               ) : joinMenu.nodeType === 'joinNode' ? (
                 <>
                   <button role="menuitem" onClick={enableJoinMove}><span className="menu-icon violet"><MousePointer2 size={15} /></span><span>{t('Move Join Point')}</span><ArrowRight size={13} /></button>

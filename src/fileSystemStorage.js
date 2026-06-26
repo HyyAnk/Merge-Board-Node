@@ -258,7 +258,7 @@ export async function readProject(project) {
   const texts = await directory.getDirectoryHandle('texts', { create: true });
   const nodes = await Promise.all((data.nodes || []).map(async (node) => {
     const next = { ...node, data: { ...(node.data || {}) } };
-    if (['textNode', 'exampleNode'].includes(node.type) && next.data.textFile) {
+    if (['textNode', 'exampleNode', 'carouselNode'].includes(node.type) && next.data.textFile) {
       try {
         const fileName = next.data.textFile.split('/').pop();
         next.data.content = await (await (await texts.getFileHandle(fileName)).getFile()).text();
@@ -272,6 +272,19 @@ export async function readProject(project) {
       } catch {
         next.data.image = '';
       }
+    }
+    if (node.type === 'carouselNode' && Array.isArray(next.data.images)) {
+      next.data.images = await Promise.all(next.data.images.map(async (item) => {
+        const card = { ...(item || {}) };
+        if (card.assetFile) {
+          try {
+            card.image = makeObjectUrl(await (await assets.getFileHandle(card.assetFile)).getFile());
+          } catch {
+            card.image = '';
+          }
+        }
+        return card;
+      }));
     }
     return next;
   }));
@@ -296,7 +309,7 @@ export async function saveProject(project, nodes, edges) {
     delete clean.data.resourceCount;
     const isExampleText = node.type === 'exampleNode'
       && (node.data?.exampleMode === 'text' || (!node.data?.exampleMode && !node.data?.image && typeof node.data?.content === 'string'));
-    if (node.type === 'textNode' || isExampleText) {
+    if (node.type === 'textNode' || node.type === 'carouselNode' || isExampleText) {
       const file = safeTextName(node.id);
       await writeFile(texts, file, String(node.data?.content || ''));
       referencedTexts.add(file);
@@ -315,6 +328,16 @@ export async function saveProject(project, nodes, edges) {
         }
       }
       delete clean.data.image;
+    }
+    if (node.type === 'carouselNode') {
+      clean.data.images = Array.isArray(node.data?.images)
+        ? node.data.images.map((item) => {
+          const card = { ...(item || {}) };
+          if (card.assetFile) referencedAssets.add(card.assetFile);
+          delete card.image;
+          return card;
+        })
+        : [];
     }
     return clean;
   }));
