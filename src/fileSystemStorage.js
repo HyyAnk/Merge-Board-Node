@@ -266,7 +266,7 @@ export async function readProject(project) {
         next.data.content ||= '';
       }
     }
-    if (['imageNode', 'exampleNode', 'canvasImageNode'].includes(node.type) && next.data.assetFile) {
+    if (['imageNode', 'exampleNode', 'genNode', 'canvasImageNode'].includes(node.type) && next.data.assetFile) {
       try {
         next.data.image = makeObjectUrl(await (await assets.getFileHandle(next.data.assetFile)).getFile());
       } catch {
@@ -307,6 +307,16 @@ export async function saveProject(project, nodes, edges) {
     };
     delete clean.data.resources;
     delete clean.data.resourceCount;
+    delete clean.data.inputPorts;
+    delete clean.data.outputPorts;
+    delete clean.data.inputTitles;
+    delete clean.data.imageInputs;
+    delete clean.data.promptText;
+    delete clean.data.inputImageCount;
+    delete clean.data.inputTextCount;
+    delete clean.data.moveEnabled;
+    delete clean.data.joinReversed;
+    delete clean.data.isGenerating;
     const isExampleText = node.type === 'exampleNode'
       && (node.data?.exampleMode === 'text' || (!node.data?.exampleMode && !node.data?.image && typeof node.data?.content === 'string'));
     if (node.type === 'textNode' || node.type === 'carouselNode' || isExampleText) {
@@ -316,7 +326,7 @@ export async function saveProject(project, nodes, edges) {
       delete clean.data.content;
       clean.data.textFile = `texts/${file}`;
     }
-    if (['imageNode', 'exampleNode', 'canvasImageNode'].includes(node.type)) {
+    if (['imageNode', 'exampleNode', 'genNode', 'canvasImageNode'].includes(node.type)) {
       if (node.data?.assetFile) {
         referencedAssets.add(node.data.assetFile);
         try {
@@ -378,21 +388,31 @@ export async function uploadAsset(project, file, preferredName = '') {
   return { url: makeObjectUrl(storedFile), assetFile, fileName: preferredName || file.name || assetFile };
 }
 
-export async function revealAsset(project, assetFile) {
+export async function revealAsset(project, assetFile, rootPath = '') {
   if (!project?.folder || !assetFile) throw new Error('Asset file is not available');
-  if (typeof window.showOpenFilePicker !== 'function') throw new Error('This browser cannot open the asset in Explorer');
-  const directory = await getProjectDirectory(project.folder);
-  const assets = await directory.getDirectoryHandle('assets');
-  const fileHandle = await assets.getFileHandle(assetFile);
+  if (!rootPath.trim()) throw new Error('Enter the local project folder path in Settings first');
+
+  const response = await fetch('/__mergeboard/open-asset-folder', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Mergeboard-Local': '1',
+    },
+    body: JSON.stringify({
+      rootPath: rootPath.trim(),
+      projectFolder: project.folder,
+      assetFile,
+    }),
+  });
+
+  let payload = null;
   try {
-    await window.showOpenFilePicker({
-      id: 'mergeboard-reveal-asset',
-      startIn: fileHandle,
-      multiple: false,
-      types: [{ description: 'Image assets', accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'] } }],
-    });
-  } catch (error) {
-    if (error.name !== 'AbortError') throw error;
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (!response.ok || !payload?.ok) {
+    throw new Error(payload?.error || 'Restart the local server, then try opening the asset folder again');
   }
 }
 

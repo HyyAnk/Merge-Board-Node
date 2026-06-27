@@ -29,6 +29,7 @@ import {
   Check,
   ChevronLeft,
   Copy,
+  Download,
   FileImage,
   FileText,
   FolderOpen,
@@ -66,6 +67,10 @@ import * as fileStorage from './fileSystemStorage.js';
 const STORAGE_KEY = 'mergeboard-project-v1';
 const ACTIVE_PROJECT_KEY = 'mergeboard-active-project-v1';
 const THEME_KEY = 'mergeboard-theme-v1';
+const SHOPAIKEY_API_KEY = 'mergeboard-shopaikey-api-key-v1';
+const LOCAL_PROJECT_ROOT_PATH_KEY = 'mergeboard-local-project-root-path-v1';
+const SHOPAIKEY_BASE_URL = 'https://direct.shopaikey.com/v1';
+const SHOPAIKEY_IMAGE_MODEL = 'gpt-image-2';
 const NodeActionsContext = createContext(null);
 const EdgeActionsContext = createContext(null);
 
@@ -164,6 +169,80 @@ async function dataUrlToBlob(dataUrl) {
   return response.blob();
 }
 
+async function imageUrlToNamedBlob(src, fileName = 'input.png') {
+  const response = await fetch(src);
+  if (!response.ok) throw new Error(`Could not read input image: ${fileName}`);
+  const blob = await response.blob();
+  return { blob, fileName, type: blob.type || 'image/png' };
+}
+
+async function saveImageBlobAs(blob, fileName = 'generated-image.png') {
+  const safeName = String(fileName || 'generated-image.png').replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').replace(/[. ]+$/g, '') || 'generated-image.png';
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: safeName.toLowerCase().endsWith('.png') ? safeName : `${safeName}.png`,
+      types: [{ description: 'PNG image', accept: { 'image/png': ['.png'] } }],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = safeName.toLowerCase().endsWith('.png') ? safeName : `${safeName}.png`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKEY_IMAGE_MODEL }) {
+  const form = new FormData();
+  form.append('model', model);
+  form.append('prompt', prompt);
+  form.append('size', '1536x1024');
+  form.append('quality', 'high');
+  form.append('n', '1');
+  images.forEach((image, index) => {
+    form.append('image[]', image.blob, image.fileName || `input-${index + 1}.png`);
+  });
+
+  const response = await fetch(`${SHOPAIKEY_BASE_URL}/images/edits`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'application/json',
+    },
+    body: form,
+  });
+  const rawBody = await response.text();
+  let body = null;
+  try {
+    body = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    throw new Error(`ShopAIKey returned a non-JSON response: ${rawBody.slice(0, 220)}`);
+  }
+  if (!response.ok) {
+    const message = body?.error?.message || body?.message || rawBody || `HTTP ${response.status}`;
+    throw new Error(`ShopAIKey request failed: ${message}`);
+  }
+  const firstImage = Array.isArray(body?.data) ? body.data[0] : null;
+  if (firstImage?.b64_json) {
+    const binary = atob(firstImage.b64_json);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new Blob([bytes], { type: 'image/png' });
+  }
+  if (firstImage?.url) {
+    const imageResponse = await fetch(firstImage.url);
+    if (!imageResponse.ok) throw new Error('Generated image URL could not be downloaded');
+    return imageResponse.blob();
+  }
+  throw new Error('ShopAIKey response did not include generated image data');
+}
+
 function getImageSize(src) {
   return new Promise((resolve) => {
     const image = new Image();
@@ -179,7 +258,7 @@ function findGraphInputDuplicates(nodes, graphEdges) {
     if (visited.has(nodeId)) return new Set();
     const node = nodeById.get(nodeId);
     if (!node) return new Set();
-    if (['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(node.type)) return new Set([node.id]);
+    if (['textNode', 'carouselNode', 'imageNode', 'exampleNode', 'genNode'].includes(node.type)) return new Set([node.id]);
     const nextVisited = new Set(visited).add(nodeId);
     const lineage = new Set();
     graphEdges.filter((edge) => edge.target === nodeId).forEach((edge) => {
@@ -188,7 +267,7 @@ function findGraphInputDuplicates(nodes, graphEdges) {
     return lineage;
   };
   const duplicates = new Map();
-  nodes.filter((node) => ['mixerNode', 'exampleNode', 'joinNode'].includes(node.type)).forEach((receiver) => {
+  nodes.filter((node) => ['mixerNode', 'exampleNode', 'genNode', 'joinNode'].includes(node.type)).forEach((receiver) => {
     const seenSources = new Set();
     graphEdges.filter((edge) => edge.target === receiver.id).forEach((edge) => {
       collectLineage(edge.source).forEach((sourceId) => {
@@ -912,7 +991,7 @@ const ImageNode = memo(({ id, data, selected }) => {
               onPointerCancel={finishLightboxPan}
               onDoubleClick={() => setLightboxView({ zoom: 1, x: 0, y: 0, panning: false })}
             ><img src={data.image} alt={data.title || data.fileName} draggable="false" style={{ width: lightboxFit.width || undefined, height: lightboxFit.height || undefined, maxWidth: lightboxFit.width ? 'none' : undefined, maxHeight: lightboxFit.height ? 'none' : undefined, transform: `translate(${lightboxView.x}px, ${lightboxView.y}px) scale(${lightboxView.zoom})` }} /></div>
-            <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px · {t('Zoom')} {Math.round(lightboxView.zoom * 100)}%{lightboxView.zoom > 1 ? ` · ${t('drag to pan')}` : ''}</span><button onClick={() => revealAsset(data.assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer')}</button></footer>
+            <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px · {t('Zoom')} {Math.round(lightboxView.zoom * 100)}%{lightboxView.zoom > 1 ? ` · ${t('drag to pan')}` : ''}</span><button onClick={() => revealAsset(data.assetFile)}><FolderOpen size={15} />{t('Open containing folder', 'Mở folder chứa ảnh')}</button></footer>
           </section>
         </div>,
         document.body,
@@ -1012,7 +1091,7 @@ function ExampleImageLightbox({ open, onClose, image, title, fileName, assetFile
         <div ref={stageRef} className={`image-lightbox-stage ${view.zoom > 1 ? 'is-zoomed' : ''} ${view.panning ? 'is-panning' : ''}`} onWheel={onWheel} onPointerDown={beginPan} onPointerMove={movePan} onPointerUp={finishPan} onPointerCancel={finishPan} onDoubleClick={() => setView({ zoom: 1, x: 0, y: 0, panning: false })}>
           <img src={image} alt={title || fileName} draggable="false" style={{ width: fit.width || undefined, height: fit.height || undefined, maxWidth: fit.width ? 'none' : undefined, maxHeight: fit.height ? 'none' : undefined, transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }} />
         </div>
-        <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px · {t('Zoom')} {Math.round(view.zoom * 100)}%{view.zoom > 1 ? ` · ${t('drag to pan')}` : ''}</span>{assetFile && <button onClick={() => revealAsset(assetFile)}><FolderOpen size={15} />{t('Open asset in Explorer')}</button>}</footer>
+        <footer><span>{dimensions.width || '—'} × {dimensions.height || '—'} px · {t('Zoom')} {Math.round(view.zoom * 100)}%{view.zoom > 1 ? ` · ${t('drag to pan')}` : ''}</span>{assetFile && <button onClick={() => revealAsset(assetFile)}><FolderOpen size={15} />{t('Open containing folder', 'Mở folder chứa ảnh')}</button>}</footer>
       </section>
     </div>,
     document.body,
@@ -1301,6 +1380,87 @@ const ExampleNode = memo(({ id, data, selected }) => {
   );
 });
 
+const GenNode = memo(({ id, data, selected }) => {
+  const t = useTranslation();
+  const { generateImage, focusNode, revealAsset, downloadGeneratedImage } = useContext(NodeActionsContext);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const inputTitles = data.inputTitles || [];
+  const imageInputs = data.imageInputs || [];
+  const promptText = data.promptText || '';
+  const isGenerating = Boolean(data.isGenerating);
+  const color = data.color || '#a855f7';
+  const viewMode = data.viewMode || 'expanded';
+  const inputTextCount = data.inputTextCount || inputTitles.filter((item) => item.kind === 'text').length;
+  const inputImageCount = data.inputImageCount || imageInputs.length;
+  const inputTitleListText = inputTitles.map((item) => item.title || t('Untitled node', 'Node chÆ°a Ä‘áº·t tÃªn')).join('\n');
+  const imageLimitExceeded = inputImageCount > 4;
+  const canGenerate = !isGenerating && promptText.trim() && inputImageCount > 0 && !imageLimitExceeded;
+
+  return (
+    <>
+      <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`gen-card mode-${viewMode} ${isGenerating ? 'is-generating' : ''}`}>
+        <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
+        <NodeHeader icon={Zap} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
+        <div className="gen-content nowheel">
+          <div className={`gen-preview ${isGenerating ? 'is-generating' : ''}`} onDoubleClick={(event) => { if (data.image) { event.stopPropagation(); setPreviewOpen(true); } }}>
+            {data.image ? (
+              <>
+                <img src={data.image} alt={data.title || t('Generated image')} draggable="false" />
+                <div className="example-resource-copy"><CopyButton value={data.image} kind="image" /></div>
+                {selected && (
+                  <button
+                    className="gen-download-button nodrag"
+                    type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => { event.stopPropagation(); downloadGeneratedImage(id); }}
+                    aria-label={t('Download generated image', 'Táº£i áº£nh Ä‘Ã£ táº¡o')}
+                    title={t('Save another copy', 'LÆ°u thÃªm má»™t báº£n')}
+                  >
+                    <Download size={15} />
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="gen-empty-preview"><Zap size={24} /><span>{isGenerating ? t('Generating image...', 'Äang táº¡o áº£nh...') : t('No generated image yet', 'ChÆ°a cÃ³ áº£nh táº¡o')}</span></div>
+            )}
+            {isGenerating && <div className="gen-progress-overlay"><span></span></div>}
+          </div>
+          <button
+            className="gen-generate-button nodrag"
+            type="button"
+            disabled={!canGenerate}
+            onClick={() => generateImage(id, { prompt: promptText, imageInputs })}
+            title={imageLimitExceeded ? t('Use at most 4 image inputs', 'Tá»‘i Ä‘a 4 áº£nh input') : !promptText.trim() ? t('Connect text input for prompt', 'Cáº¯m text input Ä‘á»ƒ lÃ m prompt') : !inputImageCount ? t('Connect image input', 'Cáº¯m áº£nh input') : t('Generate image', 'Táº¡o áº£nh')}
+          >
+            {isGenerating ? <><span className="gen-spinner"></span>{t('Generating', 'Äang táº¡o')}</> : <><Zap size={14} />{t('Generate', 'Táº¡o áº£nh')}</>}
+          </button>
+          {data.generationError && <div className="gen-error">{data.generationError}</div>}
+          <div className="mixer-footer-note example-resource-count"><span>{inputImageCount}/4 {t('images', 'áº£nh')}</span><span>{inputTextCount} text</span></div>
+          <section className="example-inputs gen-inputs">
+            <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE · {inputTitles.length}</div>
+            {inputTitles.length ? inputTitles.map((item) => (
+              <div className={`example-title-row ${item.kind}`} key={item.id}>
+                {item.kind === 'example' ? <BookOpenCheck size={13} /> : item.kind === 'image' ? <ImageIcon size={13} /> : <FileText size={13} />}
+                <button className="example-title-link nodrag" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(item.id); }} aria-label={t(`Go to ${item.title || 'input node'}`, `Äi tá»›i ${item.title || 'node input'}`)} title={t('Go to input node', 'Äi tá»›i node input')}>{item.title || t('Untitled node', 'Node chÆ°a Ä‘áº·t tÃªn')}</button>
+                {item.previewImage && (
+                  <div className="example-input-preview" aria-hidden="true">
+                    <img src={item.previewImage} alt="" draggable="false" />
+                  </div>
+                )}
+              </div>
+            )) : <div className="example-empty">{t('Connect Text and up to 4 Image inputs.', 'Cáº¯m Text vÃ  tá»‘i Ä‘a 4 áº£nh input.')}</div>}
+          </section>
+        </div>
+        <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
+        <div className="node-border-copy example-input-title-copy" title={t('Copy input node title list')}>
+          <CopyButton value={inputTitleListText} />
+        </div>
+      </NodeShell>
+      <ExampleImageLightbox open={previewOpen} onClose={() => setPreviewOpen(false)} image={data.image} title={data.title} fileName={data.fileName} assetFile={data.assetFile} dimensions={{ width: data.imageWidth || 0, height: data.imageHeight || 0 }} revealAsset={revealAsset} />
+    </>
+  );
+});
+
 const CanvasImageNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
   const { updateNode } = useContext(NodeActionsContext);
@@ -1389,7 +1549,7 @@ const SectionNode = memo(({ id, data, selected }) => {
   );
 });
 
-const nodeTypes = { textNode: TextNode, carouselNode: CarouselNode, imageNode: ImageNode, mixerNode: MixerNode, exampleNode: ExampleNode, canvasImageNode: CanvasImageNode, joinNode: JoinNode, sectionNode: SectionNode };
+const nodeTypes = { textNode: TextNode, carouselNode: CarouselNode, imageNode: ImageNode, mixerNode: MixerNode, exampleNode: ExampleNode, genNode: GenNode, canvasImageNode: CanvasImageNode, joinNode: JoinNode, sectionNode: SectionNode };
 
 function routeAroundNodes(start, end, obstacles) {
   const xs = [...new Set([start.x, end.x, ...obstacles.flatMap((rect) => [rect.left, rect.right])])].sort((a, b) => a - b);
@@ -1829,6 +1989,7 @@ function Sidebar({ collapsed, setCollapsed, addNode, resetProject, openSettings,
         <button onClick={() => addNode('imageNode')}><span className="menu-icon orange"><ImageIcon size={17} /></span>{!collapsed && <><span><strong>Image</strong><small>{t('Image & visual', 'áº¢nh & visual')}</small></span><Plus size={15} /></>}</button>
         <button onClick={() => addNode('mixerNode')}><span className="menu-icon violet"><Merge size={17} /></span>{!collapsed && <><span><strong>Mixer</strong><small>{t('Collect resources', 'Gom tÃ i nguyÃªn')}</small></span><Plus size={15} /></>}</button>
         <button onClick={() => addNode('exampleNode')}><span className="menu-icon green"><BookOpenCheck size={17} /></span>{!collapsed && <><span><strong>Example</strong><small>{t('Reference image & input', 'áº¢nh máº«u & input')}</small></span><Plus size={15} /></>}</button>
+        <button onClick={() => addNode('genNode')}><span className="menu-icon violet"><Zap size={17} /></span>{!collapsed && <><span><strong>Gen Node</strong><small>{t('Generate image', 'Táº¡o áº£nh')}</small></span><Plus size={15} /></>}</button>
       </nav>
 
       <div className="sidebar-bottom">
@@ -1853,6 +2014,8 @@ function FlowCanvas() {
   const [collapsed, setCollapsed] = useState(false);
   const [toast, setToast] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || 'dark');
+  const [shopAIKey, setShopAIKey] = useState(() => localStorage.getItem(SHOPAIKEY_API_KEY) || '');
+  const [localProjectRootPath, setLocalProjectRootPath] = useState(() => localStorage.getItem(LOCAL_PROJECT_ROOT_PATH_KEY) || '');
   const t = translateEnglish;
   const [storageReady, setStorageReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState('loading');
@@ -1945,7 +2108,7 @@ function FlowCanvas() {
       const sourceIds = (incomingByTarget.get(targetId) || []).flatMap((edge) => {
         const source = nodeById.get(edge.source);
         if (!source) return [];
-        if (['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(source.type)) return [source.id];
+        if (['textNode', 'carouselNode', 'imageNode', 'exampleNode', 'genNode'].includes(source.type)) return [source.id];
         if (['mixerNode', 'joinNode'].includes(source.type)) return collectInputSourceIds(source.id, nextVisiting);
         return [];
       });
@@ -1980,7 +2143,7 @@ function FlowCanvas() {
 
   const selectedBatchInputIds = useMemo(
     () => nodes
-      .filter((node) => ['textNode', 'carouselNode', 'imageNode', 'exampleNode', 'canvasImageNode'].includes(node.type) && node.selected)
+      .filter((node) => ['textNode', 'carouselNode', 'imageNode', 'exampleNode', 'genNode', 'canvasImageNode'].includes(node.type) && node.selected)
       .map((node) => node.id),
     [nodes],
   );
@@ -2250,6 +2413,14 @@ function FlowCanvas() {
   }, [theme]);
 
   useEffect(() => {
+    localStorage.setItem(SHOPAIKEY_API_KEY, shopAIKey);
+  }, [shopAIKey]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_PROJECT_ROOT_PATH_KEY, localProjectRootPath);
+  }, [localProjectRootPath]);
+
+  useEffect(() => {
     localStorage.removeItem('mergeboard-language-v1');
     document.documentElement.lang = 'en';
   }, []);
@@ -2257,6 +2428,60 @@ function FlowCanvas() {
   const updateNode = useCallback((id, patch) => {
     setNodes((current) => current.map((node) => node.id === id ? { ...node, data: { ...node.data, ...patch } } : node));
   }, []);
+
+  const generateImage = useCallback(async (id, { prompt = '', imageInputs = [] } = {}) => {
+    const cleanPrompt = String(prompt || '').trim();
+    const cleanApiKey = shopAIKey.trim();
+    if (!cleanApiKey) return showToast(t('Add ShopAIKey API key in Settings first', 'HÃ£y nháº­p ShopAIKey API key trong Settings trÆ°á»›c'), 'error');
+    if (!cleanPrompt) return showToast(t('Connect text inputs to build the prompt first', 'HÃ£y káº¿t ná»‘i text input Ä‘á»ƒ táº¡o prompt trÆ°á»›c'), 'error');
+    if (!imageInputs.length) return showToast(t('Connect at least one image input', 'HÃ£y káº¿t ná»‘i Ã­t nháº¥t 1 áº£nh input'), 'error');
+    if (imageInputs.length > 4) return showToast(t('Gen Node supports at most 4 image inputs', 'Gen Node chá»‰ há»— trá»£ tá»‘i Ä‘a 4 áº£nh input'), 'error');
+    const activeProject = projectsRef.current.find((item) => item.id === activeProjectId);
+    if (!activeProject) return showToast(t('No active project found', 'KhÃ´ng tÃ¬m tháº¥y project Ä‘ang má»Ÿ'), 'error');
+
+    updateNode(id, { isGenerating: true, generationError: '' });
+    try {
+      const images = await Promise.all(imageInputs.map((image, index) => imageUrlToNamedBlob(image.value, image.fileName || `input-${index + 1}.png`)));
+      const generatedBlob = await callShopAIKeyImageEdit({
+        apiKey: cleanApiKey,
+        model: SHOPAIKEY_IMAGE_MODEL,
+        prompt: cleanPrompt,
+        images,
+      });
+      const uploaded = await fileStorage.uploadAsset(activeProject, generatedBlob, `gen-node-${Date.now()}.png`);
+      const dimensions = await getImageSize(uploaded.url);
+      updateNode(id, {
+        image: uploaded.url,
+        assetFile: uploaded.assetFile,
+        fileName: uploaded.fileName,
+        imageWidth: dimensions.width,
+        imageHeight: dimensions.height,
+        generatedAt: new Date().toISOString(),
+        isGenerating: false,
+        generationError: '',
+      });
+      showToast(t('Image generated', 'ÄÃ£ táº¡o áº£nh'));
+    } catch (error) {
+      const message = error.message || t('Image generation failed', 'Táº¡o áº£nh tháº¥t báº¡i');
+      updateNode(id, { isGenerating: false, generationError: message });
+      showToast(message, 'error');
+    }
+  }, [activeProjectId, shopAIKey, showToast, t, updateNode]);
+
+  const downloadGeneratedImage = useCallback(async (id) => {
+    const node = nodes.find((item) => item.id === id);
+    if (!node?.data?.image) return showToast(t('This Gen Node has no generated image yet', 'Gen Node nÃ y chÆ°a cÃ³ áº£nh Ä‘á»ƒ táº£i'), 'error');
+    try {
+      const response = await fetch(node.data.image);
+      if (!response.ok) throw new Error(t('Could not read generated image', 'KhÃ´ng thá»ƒ Ä‘á»c áº£nh Ä‘Ã£ táº¡o'));
+      const blob = await response.blob();
+      await saveImageBlobAs(blob, node.data.fileName || `${node.data.title || 'gen-node'}.png`);
+      showToast(t('Generated image saved', 'ÄÃ£ lÆ°u thÃªm áº£nh Ä‘Ã£ táº¡o'));
+    } catch (error) {
+      if (error.name === 'AbortError') return;
+      showToast(error.message || t('Could not save generated image', 'KhÃ´ng thá»ƒ lÆ°u áº£nh Ä‘Ã£ táº¡o'), 'error');
+    }
+  }, [nodes, showToast, t]);
 
   const focusNode = useCallback((nodeId) => {
     const target = getNode(nodeId);
@@ -2309,11 +2534,11 @@ function FlowCanvas() {
   const revealAsset = useCallback(async (assetFile) => {
     try {
       const project = projectsRef.current.find((item) => item.id === activeProjectId);
-      await fileStorage.revealAsset(project, assetFile);
+      await fileStorage.revealAsset(project, assetFile, localProjectRootPath);
     } catch (error) {
-      showToast(error.message || t('Could not open the asset in Explorer', 'KhÃ´ng thá»ƒ má»Ÿ asset trong Explorer'), 'error');
+      showToast(error.message || t('Could not open the containing folder', 'Không thể mở folder chứa ảnh'), 'error');
     }
-  }, [activeProjectId, showToast, t]);
+  }, [activeProjectId, localProjectRootPath, showToast, t]);
 
   const addCanvasImages = useCallback(async (files, clientPoint = null) => {
     try {
@@ -2538,14 +2763,14 @@ function FlowCanvas() {
   }, [showToast, t]);
   const connectNodes = useCallback((connection) => {
     const target = nodes.find((node) => node.id === connection.target);
-    if (!['mixerNode', 'exampleNode', 'joinNode'].includes(target?.type)) return showToast(t('Only Mixer, Example, or Join Point can receive input', 'Chá»‰ Mixer, Example hoáº·c Join Point má»›i nháº­n Ä‘áº§u vÃ o'), 'error');
+    if (!['mixerNode', 'exampleNode', 'genNode', 'joinNode'].includes(target?.type)) return showToast(t('Only Mixer, Example, Gen Node, or Join Point can receive input', 'Chá»‰ Mixer, Example, Gen Node hoáº·c Join Point má»›i nháº­n Ä‘áº§u vÃ o'), 'error');
     if (connection.source === connection.target) return;
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const collectSourceLineage = (nodeId, graphEdges, visited = new Set()) => {
       if (visited.has(nodeId)) return new Set();
       const sourceNode = nodeById.get(nodeId);
       if (!sourceNode) return new Set();
-      if (['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(sourceNode.type)) return new Set([sourceNode.id]);
+      if (['textNode', 'carouselNode', 'imageNode', 'exampleNode', 'genNode'].includes(sourceNode.type)) return new Set([sourceNode.id]);
       const nextVisited = new Set(visited).add(nodeId);
       const lineage = new Set();
       graphEdges.filter((edge) => edge.target === nodeId).forEach((edge) => {
@@ -2555,7 +2780,7 @@ function FlowCanvas() {
     };
     const findDuplicateInputs = (graphEdges) => {
       const duplicates = new Map();
-      nodes.filter((node) => ['mixerNode', 'exampleNode', 'joinNode'].includes(node.type)).forEach((receiver) => {
+      nodes.filter((node) => ['mixerNode', 'exampleNode', 'genNode', 'joinNode'].includes(node.type)).forEach((receiver) => {
         const seenSources = new Set();
         graphEdges.filter((edge) => edge.target === receiver.id).forEach((edge) => {
           collectSourceLineage(edge.source, graphEdges).forEach((sourceId) => {
@@ -2602,7 +2827,7 @@ function FlowCanvas() {
       type: 'beam',
       data: { color: 'gradient' },
     }, current));
-    showToast(target.type === 'exampleNode' ? t('Connected to Example Node', 'ÄÃ£ káº¿t ná»‘i vÃ o Node Example') : target.type === 'joinNode' ? t('Connected to Join Point', 'ÄÃ£ káº¿t ná»‘i vÃ o Join Point') : t('Connected to Mixer', 'ÄÃ£ káº¿t ná»‘i vÃ o Mixer'));
+    showToast(target.type === 'exampleNode' ? t('Connected to Example Node', 'ÄÃ£ káº¿t ná»‘i vÃ o Node Example') : target.type === 'genNode' ? t('Connected to Gen Node', 'ÄÃ£ káº¿t ná»‘i vÃ o Gen Node') : target.type === 'joinNode' ? t('Connected to Join Point', 'ÄÃ£ káº¿t ná»‘i vÃ o Join Point') : t('Connected to Mixer', 'ÄÃ£ káº¿t ná»‘i vÃ o Mixer'));
     return true;
   }, [nodes, edges, showToast, t]);
 
@@ -2639,11 +2864,12 @@ function FlowCanvas() {
       imageNode: { title: t('New Image', 'áº¢nh má»›i'), image: '', fileName: '', viewMode: 'expanded', color: '#f59e0b' },
       mixerNode: { title: t('New Mixer', 'Mixer má»›i'), viewMode: 'expanded', color: '#7c6cf2' },
       exampleNode: { title: t('Example Node'), exampleMode: '', image: '', fileName: '', content: '', viewMode: 'expanded', color: '#10b981' },
+      genNode: { title: t('Gen Node'), image: '', fileName: '', viewMode: 'expanded', color: '#a855f7' },
       joinNode: { color: '#8b7cf6' },
     };
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), { id, type, position, data: defaults[type], selected: true }]);
     setContextMenu(null);
-    const label = type === 'textNode' ? 'Text' : type === 'carouselNode' ? 'Carousel' : type === 'imageNode' ? 'Image' : type === 'mixerNode' ? 'Mixer' : type === 'joinNode' ? 'Join Point' : t('Example Node');
+    const label = type === 'textNode' ? 'Text' : type === 'carouselNode' ? 'Carousel' : type === 'imageNode' ? 'Image' : type === 'mixerNode' ? 'Mixer' : type === 'genNode' ? 'Gen Node' : type === 'joinNode' ? 'Join Point' : t('Example Node');
     showToast(t(`Added ${label}`, `ÄÃ£ thÃªm ${label}`));
   }, [screenToFlowPosition, showToast, t]);
 
@@ -2817,7 +3043,7 @@ function FlowCanvas() {
   }, [screenToFlowPosition]);
 
   const openJoinMenu = useCallback((event, node) => {
-    if (!['joinNode', 'mixerNode', 'exampleNode', 'textNode', 'canvasImageNode'].includes(node.type)) return;
+    if (!['joinNode', 'mixerNode', 'exampleNode', 'genNode', 'textNode', 'canvasImageNode'].includes(node.type)) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenu(null);
@@ -2999,7 +3225,7 @@ function FlowCanvas() {
 
   const connectSelectedToNode = useCallback((targetId) => {
     const targetNode = nodes.find((node) => node.id === targetId);
-    if (!['mixerNode', 'exampleNode', 'joinNode'].includes(targetNode?.type)) return;
+    if (!['mixerNode', 'exampleNode', 'genNode', 'joinNode'].includes(targetNode?.type)) return;
     const sourceIds = selectedBatchInputIds.filter((id) => id !== targetId);
     if (!sourceIds.length) {
       showToast(t('Select one or more input nodes first'), 'error');
@@ -3031,7 +3257,7 @@ function FlowCanvas() {
       if (visited.has(nodeId)) return new Set();
       const sourceNode = nodeById.get(nodeId);
       if (!sourceNode) return new Set();
-      if (['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(sourceNode.type)) return new Set([sourceNode.id]);
+      if (['textNode', 'carouselNode', 'imageNode', 'exampleNode', 'genNode'].includes(sourceNode.type)) return new Set([sourceNode.id]);
       const nextVisited = new Set(visited).add(nodeId);
       const lineage = new Set();
       graphEdges.filter((edge) => edge.target === nodeId).forEach((edge) => {
@@ -3041,7 +3267,7 @@ function FlowCanvas() {
     };
     const findDuplicateInputs = (graphEdges) => {
       const duplicates = new Map();
-      nextNodes.filter((node) => ['mixerNode', 'exampleNode', 'joinNode'].includes(node.type)).forEach((receiver) => {
+      nextNodes.filter((node) => ['mixerNode', 'exampleNode', 'genNode', 'joinNode'].includes(node.type)).forEach((receiver) => {
         const seenSources = new Set();
         graphEdges.filter((edge) => edge.target === receiver.id).forEach((edge) => {
           collectSourceLineage(edge.source, graphEdges).forEach((sourceId) => {
@@ -3065,7 +3291,7 @@ function FlowCanvas() {
     let skippedCount = 0;
     sourceIds.forEach((sourceId, index) => {
       const sourceNode = nodeById.get(sourceId);
-      if (!['textNode', 'carouselNode', 'imageNode', 'exampleNode'].includes(sourceNode?.type)) {
+      if (!['textNode', 'carouselNode', 'imageNode', 'exampleNode', 'genNode'].includes(sourceNode?.type)) {
         skippedCount += 1;
         return;
       }
@@ -3246,15 +3472,20 @@ function FlowCanvas() {
         }
         if (source.type === 'imageNode') {
           return source.data.image
-            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color, imageWidth: source.data.imageWidth, imageHeight: source.data.imageHeight }]
+            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color, imageWidth: source.data.imageWidth, imageHeight: source.data.imageHeight, fileName: source.data.fileName }]
             : [];
         }
         if (source.type === 'exampleNode') {
           const exampleResources = [];
           const sourceMode = source.data.exampleMode || (source.data.image ? 'image' : source.data.content?.trim() ? 'text' : '');
-          if (sourceMode === 'image' && source.data.image) exampleResources.push({ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color, imageWidth: source.data.imageWidth, imageHeight: source.data.imageHeight });
+          if (sourceMode === 'image' && source.data.image) exampleResources.push({ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color, imageWidth: source.data.imageWidth, imageHeight: source.data.imageHeight, fileName: source.data.fileName });
           if (sourceMode === 'text' && source.data.content?.trim()) exampleResources.push({ sourceId: source.id, kind: 'text', title: source.data.title, value: source.data.content, sourceColor: source.data.color });
           return exampleResources;
+        }
+        if (source.type === 'genNode') {
+          return source.data.image
+            ? [{ sourceId: source.id, kind: 'image', title: source.data.title, value: source.data.image, sourceColor: source.data.color, imageWidth: source.data.imageWidth, imageHeight: source.data.imageHeight, fileName: source.data.fileName }]
+            : [];
         }
         if (['mixerNode', 'joinNode'].includes(source.type)) return collectResources(source.id, nextVisited);
         return [];
@@ -3270,6 +3501,7 @@ function FlowCanvas() {
         if (source.type === 'textNode' || source.type === 'carouselNode') return [{ id: source.id, kind: 'text', title: source.data.title }];
         if (source.type === 'imageNode') return [{ id: source.id, kind: 'image', title: source.data.title, previewImage: source.data.image || '' }];
         if (source.type === 'exampleNode') return [{ id: source.id, kind: 'example', title: source.data.title, previewImage: source.data.image || '' }];
+        if (source.type === 'genNode') return [{ id: source.id, kind: 'image', title: source.data.title, previewImage: source.data.image || '' }];
         if (['mixerNode', 'joinNode'].includes(source.type)) return collectInputNodes(source.id, nextVisited);
         return [];
       });
@@ -3290,6 +3522,15 @@ function FlowCanvas() {
         const collected = collectInputNodes(node.id);
         const inputTitles = sortInputTitles(collected.filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index));
         return { ...node, data: { ...nodeData, inputTitles } };
+      }
+      if (node.type === 'genNode') {
+        const collectedInputs = collectInputNodes(node.id);
+        const inputTitles = sortInputTitles(collectedInputs.filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index));
+        const collected = collectResources(node.id);
+        const unique = collected.filter((resource, index, all) => all.findIndex((item) => item.sourceId === resource.sourceId && item.kind === resource.kind) === index);
+        const textInputs = unique.filter((resource) => resource.kind === 'text' && resource.value?.trim()).sort(compareByInputTitle);
+        const imageInputs = unique.filter((resource) => resource.kind === 'image' && resource.value).sort(compareByInputTitle);
+        return { ...node, data: { ...nodeData, inputTitles, promptText: textInputs.map((resource) => resource.value.trim()).join('\n\n'), imageInputs, inputTextCount: textInputs.length, inputImageCount: imageInputs.length } };
       }
       if (node.type !== 'mixerNode') return { ...node, data: nodeData };
       const collectedInputs = collectInputNodes(node.id);
@@ -3490,7 +3731,7 @@ function FlowCanvas() {
     '--connector-hover-visual-scale': connectorScale * 1.14,
   };
 
-  const actions = useMemo(() => ({ updateNode, removeNode, copyResource, showToast, uploadImage, uploadCarouselImage, revealAsset, focusNode }), [updateNode, removeNode, copyResource, showToast, uploadImage, uploadCarouselImage, revealAsset, focusNode]);
+  const actions = useMemo(() => ({ updateNode, removeNode, copyResource, showToast, uploadImage, uploadCarouselImage, revealAsset, focusNode, generateImage, downloadGeneratedImage }), [updateNode, removeNode, copyResource, showToast, uploadImage, uploadCarouselImage, revealAsset, focusNode, generateImage, downloadGeneratedImage]);
   const edgeActions = useMemo(() => ({ removeEdge }), [removeEdge]);
 
   return (
@@ -3581,6 +3822,7 @@ function FlowCanvas() {
                   <button role="menuitem" onClick={() => addNode('imageNode', contextMenu.flowPosition)}><span className="menu-icon orange"><ImageIcon size={15} /></span><span>Image</span><Plus size={13} /></button>
                   <button role="menuitem" onClick={() => addNode('mixerNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Merge size={15} /></span><span>Mixer</span><Plus size={13} /></button>
                   <button role="menuitem" onClick={() => addNode('exampleNode', contextMenu.flowPosition)}><span className="menu-icon green"><BookOpenCheck size={15} /></span><span>Example</span><Plus size={13} /></button>
+                  <button role="menuitem" onClick={() => addNode('genNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Zap size={15} /></span><span>Gen Node</span><Plus size={13} /></button>
                   <button role="menuitem" onClick={() => addNode('joinNode', contextMenu.flowPosition)}><span className="menu-icon violet"><Waypoints size={15} /></span><span>Join Point</span><Plus size={13} /></button>
                   <div className="context-menu-shortcut"><span>{t('Duplicate selected node', 'NhÃ¢n báº£n node Ä‘Ã£ chá»n')}</span><kbd>Ctrl D</kbd></div>
                 </>
@@ -3588,8 +3830,8 @@ function FlowCanvas() {
             </div>
           )}
           {joinMenu && (
-            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={joinMenu.nodeType === 'mixerNode' ? t('Mixer options') : joinMenu.nodeType === 'exampleNode' ? t('Example options') : joinMenu.nodeType === 'textNode' ? t('Text options') : t('Join Point options')}>
-              <div className="context-menu-title"><span>{joinMenu.nodeType === 'mixerNode' ? 'MIXER' : joinMenu.nodeType === 'exampleNode' ? 'EXAMPLE' : joinMenu.nodeType === 'textNode' ? 'TEXT' : 'JOIN POINT'}</span><kbd>Right click</kbd></div>
+            <div className="canvas-context-menu join-context-menu" style={{ left: joinMenu.x, top: joinMenu.y }} role="menu" aria-label={joinMenu.nodeType === 'mixerNode' ? t('Mixer options') : joinMenu.nodeType === 'exampleNode' ? t('Example options') : joinMenu.nodeType === 'genNode' ? t('Gen Node options') : joinMenu.nodeType === 'textNode' ? t('Text options') : t('Join Point options')}>
+              <div className="context-menu-title"><span>{joinMenu.nodeType === 'mixerNode' ? 'MIXER' : joinMenu.nodeType === 'exampleNode' ? 'EXAMPLE' : joinMenu.nodeType === 'genNode' ? 'GEN NODE' : joinMenu.nodeType === 'textNode' ? 'TEXT' : 'JOIN POINT'}</span><kbd>Right click</kbd></div>
               {selectedBatchInputIds.filter((id) => id !== joinMenu.nodeId).length > 0 && (
                 <button role="menuitem" onClick={() => connectSelectedToNode(joinMenu.nodeId)}><span className="menu-icon violet"><Waypoints size={15} /></span><span>{t(`Connect ${selectedBatchInputIds.filter((id) => id !== joinMenu.nodeId).length} selected here`)}</span><ArrowRight size={13} /></button>
               )}
@@ -3663,6 +3905,29 @@ function FlowCanvas() {
                 <div className="settings-path" title={appSettings?.projectRoot || ''}>{appSettings?.projectRoot || t('No folder connected', 'ChÆ°a káº¿t ná»‘i folder')}</div>
                 <button className="choose-folder-button" onClick={chooseProjectFolder} disabled={choosingAssetFolder}><FolderOpen size={16} /><span>{choosingAssetFolder ? t('Waiting for folder selectionâ€¦', 'Äang chá» báº¡n chá»n folder...') : t('Choose folder', 'Chá»n folder')}</span></button>
                 <p>{t('The browser displays only the folder name, not its full path. Choosing another folder switches workspaces; data in the old folder remains untouched.', 'TrÃ¬nh duyá»‡t chá»‰ cho phÃ©p hiá»ƒn thá»‹ tÃªn folder, khÃ´ng hiá»ƒn thá»‹ Ä‘Æ°á»ng dáº«n Ä‘áº§y Ä‘á»§. Chá»n folder khÃ¡c sáº½ chuyá»ƒn workspace; dá»¯ liá»‡u trong folder cÅ© váº«n Ä‘Æ°á»£c giá»¯ nguyÃªn.')}</p>
+                <label className="settings-label settings-field-label"><FolderOpen size={15} /><span><strong>{t('Local project folder path', 'Đường dẫn folder project local')}</strong><small>{t('Used only by the local launcher to open asset folders in Explorer.', 'Chỉ dùng khi chạy local để mở folder ảnh trong Explorer.')}</small></span></label>
+                <input
+                  className="settings-input"
+                  type="text"
+                  value={localProjectRootPath}
+                  onChange={(event) => setLocalProjectRootPath(event.target.value)}
+                  placeholder="D:\Projects\MergeBoard"
+                  spellCheck="false"
+                  autoComplete="off"
+                  aria-label={t('Local project folder path')}
+                />
+                <div className="settings-divider" />
+                <label className="settings-label settings-field-label"><Zap size={15} /><span><strong>{t('ShopAIKey API key')}</strong><small>{t('Used by Gen Node for image generation. Stored locally in this browser.', 'DÃ¹ng cho Gen Node Ä‘á»ƒ táº¡o áº£nh. Chá»‰ lÆ°u local trong trÃ¬nh duyá»‡t nÃ y.')}</small></span></label>
+                <input
+                  className="settings-input"
+                  type="password"
+                  value={shopAIKey}
+                  onChange={(event) => setShopAIKey(event.target.value)}
+                  placeholder="sk-..."
+                  autoComplete="off"
+                  aria-label={t('ShopAIKey API key')}
+                />
+                <div className="settings-path" title={SHOPAIKEY_IMAGE_MODEL}>{SHOPAIKEY_IMAGE_MODEL}</div>
               </div>
             </section>
           </div>
