@@ -32,13 +32,66 @@ function Write-Log {
 }
 
 function Test-Mergeboard {
+    param([string]$Url = $AppUrl)
+
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -Uri $AppUrl -TimeoutSec 2
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 1
         return $response.StatusCode -eq 200 -and $response.Content -match "Mergeboard"
     }
     catch {
         return $false
     }
+}
+
+function Test-TcpPortOpen {
+    param([int]$Port)
+
+    $client = $null
+    try {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        $connect = $client.BeginConnect("127.0.0.1", $Port, $null, $null)
+        if (-not $connect.AsyncWaitHandle.WaitOne(150)) {
+            return $false
+        }
+        $client.EndConnect($connect)
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        if ($client) {
+            $client.Close()
+        }
+    }
+}
+
+function Get-ServerUrlFromLog {
+    if (-not (Test-Path -LiteralPath $ServerLog)) {
+        return $null
+    }
+
+    $content = Get-Content -Raw -LiteralPath $ServerLog -ErrorAction SilentlyContinue
+    if ($content -match "Local:\s+(http://[^\s/]+:\d+)/?") {
+        return $matches[1]
+    }
+
+    return $null
+}
+
+function Find-RunningMergeboardServer {
+    foreach ($port in 4173..4190) {
+        if (-not (Test-TcpPortOpen -Port $port)) {
+            continue
+        }
+
+        $candidate = "http://127.0.0.1:$port"
+        if (Test-Mergeboard -Url $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
 }
 
 function Stop-WithError {
@@ -77,8 +130,10 @@ else {
     Write-Log -Level INFO -Message "Thu vien da san sang; bo qua cai dat." -Step "install_dependencies"
 }
 
-if (Test-Mergeboard) {
-    Write-Log -Level INFO -Message "Server dang chay san tai cong 4173." -Step "start_server"
+$runningUrl = Find-RunningMergeboardServer
+if ($runningUrl) {
+    $AppUrl = $runningUrl
+    Write-Log -Level INFO -Message "Server dang chay san tai $AppUrl." -Step "start_server"
 }
 else {
     Write-Log -Level STEP -Message "Dang khoi dong server nen tai cong 4173..." -Step "start_server"
@@ -87,7 +142,7 @@ else {
     try {
         $server = Start-Process `
             -FilePath "npm.cmd" `
-            -ArgumentList @("run", "dev", "--", "--port", "4173") `
+            -ArgumentList @("run", "dev", "--", "--host", "127.0.0.1", "--port", "4173") `
             -WorkingDirectory $ProjectDir `
             -WindowStyle Hidden `
             -RedirectStandardOutput $ServerLog `
@@ -101,6 +156,11 @@ else {
 
     $ready = $false
     for ($attempt = 1; $attempt -le 30; $attempt++) {
+        $detectedUrl = Get-ServerUrlFromLog
+        if ($detectedUrl) {
+            $AppUrl = $detectedUrl
+        }
+
         if (Test-Mergeboard) {
             $ready = $true
             break

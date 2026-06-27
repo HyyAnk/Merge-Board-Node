@@ -462,7 +462,7 @@ function PortStack({ ports = [], type, position, color, compact = false }) {
   const nodeId = useNodeId();
   const updateNodeInternals = useUpdateNodeInternals();
   const uniquePorts = ports.filter((port, index, all) => all.findIndex((item) => item.id === port.id) === index);
-  const items = [...uniquePorts, { id: `${type}-new`, color, idle: true }];
+  const items = uniquePorts.length ? uniquePorts : [{ id: `${type}-new`, color, idle: true }];
   const sizes = items.map((port) => compact ? (port.idle ? 14 : 14) : 18);
   const gap = compact ? 3 : 24;
   const totalHeight = sizes.reduce((sum, size) => sum + size, 0) + Math.max(0, items.length - 1) * gap;
@@ -499,14 +499,50 @@ function NodeHeader({ title, nodeId, viewMode = 'expanded', color = NODE_COLORS[
   const t = useTranslation();
   const { updateNode } = useContext(NodeActionsContext);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(title || '');
   const actionsRef = useRef(null);
   const titleRef = useRef(null);
-  useLayoutEffect(() => {
-    const element = titleRef.current;
+  const focusedTitleRef = useRef(false);
+  const draftTitleRef = useRef(title || '');
+  const latestTitleRef = useRef(title || '');
+
+  useEffect(() => {
+    latestTitleRef.current = title || '';
+    if (!focusedTitleRef.current) {
+      draftTitleRef.current = title || '';
+      setDraftTitle(title || '');
+    }
+  }, [title]);
+
+  const fitTitleHeight = useCallback((element = titleRef.current) => {
     if (!element || hideTitle) return;
+    const isFocused = document.activeElement === element;
+    const selectionStart = element.selectionStart;
+    const selectionEnd = element.selectionEnd;
+    const scrollTop = element.scrollTop;
     element.style.height = 'auto';
     element.style.height = `${element.scrollHeight}px`;
-  }, [title, hideTitle]);
+    element.scrollTop = scrollTop;
+    if (isFocused && Number.isFinite(selectionStart) && Number.isFinite(selectionEnd)) {
+      element.setSelectionRange(selectionStart, selectionEnd);
+    }
+  }, [hideTitle]);
+
+  const commitTitle = useCallback(() => {
+    const nextTitle = draftTitleRef.current;
+    if (nextTitle !== latestTitleRef.current) updateNode(nodeId, { title: nextTitle });
+  }, [nodeId, updateNode]);
+
+  useLayoutEffect(() => {
+    fitTitleHeight();
+  }, [draftTitle, fitTitleHeight]);
+
+  useEffect(() => {
+    if (!focusedTitleRef.current) return undefined;
+    const syncTimer = window.setTimeout(commitTitle, 250);
+    return () => window.clearTimeout(syncTimer);
+  }, [commitTitle, draftTitle]);
+
   useEffect(() => {
     if (!paletteOpen) return undefined;
     const closeOnOutsidePointer = (event) => {
@@ -524,9 +560,18 @@ function NodeHeader({ title, nodeId, viewMode = 'expanded', color = NODE_COLORS[
             <textarea
               ref={titleRef}
               className="node-title"
-              value={title}
+              value={draftTitle}
               aria-label={t('Node name')}
-              onChange={(event) => updateNode(nodeId, { title: event.target.value })}
+              onFocus={() => { focusedTitleRef.current = true; }}
+              onChange={(event) => {
+                draftTitleRef.current = event.target.value;
+                setDraftTitle(event.target.value);
+                fitTitleHeight(event.currentTarget);
+              }}
+              onBlur={() => {
+                focusedTitleRef.current = false;
+                commitTitle();
+              }}
               rows={1}
             />
           </div>
@@ -976,15 +1021,59 @@ function ExampleImageLightbox({ open, onClose, image, title, fileName, assetFile
 
 const MixerNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
-  const { focusNode } = useContext(NodeActionsContext);
+  const { focusNode, updateNode } = useContext(NodeActionsContext);
   const resources = data.resources || [];
   const viewMode = data.viewMode || 'expanded';
   const imageResources = resources.filter((resource) => resource.kind === 'image');
   const textResources = resources.filter((resource) => resource.kind !== 'image');
   const [imageOrientations, setImageOrientations] = useState({});
+  const [segmentMenu, setSegmentMenu] = useState(null);
+  const [editingSegmentId, setEditingSegmentId] = useState(null);
+  const [editingDraft, setEditingDraft] = useState('');
+  const segmentEditorRef = useRef(null);
   const imageCount = imageResources.length;
   const textResource = resources.find((resource) => resource.kind === 'text');
   const color = data.color || '#7c6cf2';
+  useEffect(() => {
+    if (selected) return undefined;
+    setSegmentMenu(null);
+    setEditingSegmentId(null);
+    return undefined;
+  }, [selected]);
+  useEffect(() => {
+    if (!segmentMenu) return undefined;
+    const closeMenu = (event) => {
+      if (event.target?.closest?.('.mixer-segment-menu')) return;
+      setSegmentMenu(null);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setSegmentMenu(null);
+    };
+    document.addEventListener('pointerdown', closeMenu, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeMenu, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [segmentMenu]);
+  const fitSegmentEditor = useCallback((element = segmentEditorRef.current) => {
+    if (!element) return;
+    const selectionStart = element.selectionStart;
+    const selectionEnd = element.selectionEnd;
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight}px`;
+    if (document.activeElement === element && Number.isFinite(selectionStart) && Number.isFinite(selectionEnd)) {
+      element.setSelectionRange(selectionStart, selectionEnd);
+    }
+  }, []);
+  useLayoutEffect(() => {
+    if (!editingSegmentId) return;
+    const editor = segmentEditorRef.current;
+    if (!editor) return;
+    fitSegmentEditor(editor);
+    editor.focus();
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+  }, [editingSegmentId, fitSegmentEditor]);
   const isPortraitImage = useCallback((resource) => imageOrientations[resource.sourceId]
     ? imageOrientations[resource.sourceId] === 'portrait'
     : Number(resource.imageHeight || 0) > Number(resource.imageWidth || 0), [imageOrientations]);
@@ -1007,6 +1096,56 @@ const MixerNode = memo(({ id, data, selected }) => {
       </section>
     );
   };
+  const openSegmentMenu = useCallback((event, segment) => {
+    if (!selected) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setSegmentMenu({
+      x: event.clientX,
+      y: event.clientY,
+      sourceId: segment.sourceId,
+      title: segment.title || t('Untitled Text', 'Text chÆ°a Ä‘áº·t tÃªn'),
+      value: segment.value || '',
+    });
+  }, [selected, t]);
+  const startEditingSegment = useCallback(() => {
+    if (!segmentMenu?.sourceId) return;
+    setEditingSegmentId(segmentMenu.sourceId);
+    setEditingDraft(segmentMenu.value || '');
+    setSegmentMenu(null);
+  }, [segmentMenu]);
+  const renderTextSegment = (segment, segmentIndex) => {
+    const editing = editingSegmentId === segment.sourceId;
+    return (
+      <section
+        className={`mixer-text-segment tone-${segmentIndex % 2 ? 'b' : 'a'} ${editing ? 'is-editing' : ''}`}
+        key={segment.sourceId}
+        onContextMenu={(event) => openSegmentMenu(event, segment)}
+      >
+        <div className="mixer-segment-source">
+          <button className="mixer-segment-title-link nodrag" style={{ color: segment.color || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(segment.sourceId); }} aria-label={t(`Go to ${segment.title || 'text node'}`, `Äi tá»›i ${segment.title || 'node text'}`)} title={t('Go to source node', 'Äi tá»›i node nguá»“n')}>{segment.title || t('Untitled Text', 'Text chÆ°a Ä‘áº·t tÃªn')}</button>
+        </div>
+        {editing ? (
+          <textarea
+            ref={segmentEditorRef}
+            className="mixer-segment-editor nodrag nopan nowheel"
+            value={editingDraft}
+            onPointerDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onChange={(event) => {
+              setEditingDraft(event.target.value);
+              updateNode(segment.sourceId, { content: event.target.value });
+              fitSegmentEditor(event.currentTarget);
+            }}
+            onBlur={() => setEditingSegmentId(null)}
+            aria-label={t(`Edit ${segment.title || 'text node'}`)}
+          />
+        ) : (
+          <p>{segment.value}</p>
+        )}
+      </section>
+    );
+  };
   return (
     <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`mixer-card mode-${viewMode}`}>
       <div className="mixer-port-anchor">
@@ -1021,7 +1160,7 @@ const MixerNode = memo(({ id, data, selected }) => {
             <section className="resource-block" key={`${resource.sourceId}-${index}`}>
               <div className="resource-meta"><span className={`resource-kind ${resource.kind}`}>{resource.title}</span><CopyButton value={resource.value} kind={resource.kind} /></div>
               {resource.segments?.length
-                ? <div className="mixer-text mixer-text-group">{resource.segments.map((segment, segmentIndex) => <section className={`mixer-text-segment tone-${segmentIndex % 2 ? 'b' : 'a'}`} key={segment.sourceId}><div className="mixer-segment-source"><button className="mixer-segment-title-link nodrag" style={{ color: segment.color || color }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); focusNode(segment.sourceId); }} aria-label={t(`Go to ${segment.title || 'text node'}`, `Äi tá»›i ${segment.title || 'node text'}`)} title={t('Go to source node', 'Äi tá»›i node nguá»“n')}>{segment.title || t('Untitled Text', 'Text chÆ°a Ä‘áº·t tÃªn')}</button></div><p>{segment.value}</p></section>)}</div>
+                ? <div className="mixer-text mixer-text-group">{resource.segments.map(renderTextSegment)}</div>
                 : <p className="mixer-text">{resource.value || <em>{t('Empty content', 'Ná»™i dung trá»‘ng')}</em>}</p>}
             </section>
           ))}
@@ -1031,6 +1170,19 @@ const MixerNode = memo(({ id, data, selected }) => {
       <div className="mixer-footer-note is-outside">
         <span>{imageCount} {t('images')}</span><span>{textResource ? `${textResource.count} text · ${t('merged')}` : '0 text'}</span>
       </div>
+      {segmentMenu && createPortal(
+        <div
+          className="canvas-context-menu mixer-segment-menu"
+          style={{ left: segmentMenu.x, top: segmentMenu.y }}
+          role="menu"
+          aria-label={t('Text block options', 'TÃ¹y chá»n block text')}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <div className="context-menu-title"><span>{segmentMenu.title}</span><kbd>Right click</kbd></div>
+          <button role="menuitem" onClick={startEditingSegment}><span className="menu-icon blue"><Pencil size={15} /></span><span>{t('Edit this text block', 'Sá»­a block text nÃ y')}</span><ArrowRight size={13} /></button>
+        </div>,
+        document.body,
+      )}
     </NodeShell>
   );
 });
@@ -3228,7 +3380,7 @@ function FlowCanvas() {
           const bOther = direction === 'source' ? b.target : b.source;
           return centerYFor(aOther) - centerYFor(bOther) || a.id.localeCompare(b.id);
         });
-        const totalHeight = connectedEdges.length * 18 + 18 + connectedEdges.length * 24;
+        const totalHeight = connectedEdges.length * 18 + Math.max(0, connectedEdges.length - 1) * 24;
         connectedEdges.forEach((edge, index) => placements.set(edge.id, nodeTypeById.get(nodeId) === 'joinNode'
           ? { offset: 0, index }
           : { offset: -totalHeight / 2 + 9 + index * 42, index }));
