@@ -68,10 +68,16 @@ const STORAGE_KEY = 'mergeboard-project-v1';
 const ACTIVE_PROJECT_KEY = 'mergeboard-active-project-v1';
 const THEME_KEY = 'mergeboard-theme-v1';
 const SHOPAIKEY_API_KEY = 'mergeboard-shopaikey-api-key-v1';
+const OPENAI_API_KEY = 'mergeboard-openai-api-key-v1';
 const LOCAL_PROJECT_ROOT_PATH_KEY = 'mergeboard-local-project-root-path-v1';
 const NODE_CLIPBOARD_MARKER = 'MERGEBOARD_NODE_CLIPBOARD_V1';
 const SHOPAIKEY_BASE_URL = 'https://direct.shopaikey.com/v1';
-const SHOPAIKEY_IMAGE_MODEL = 'gpt-image-2';
+const OPENAI_BASE_URL = 'https://api.openai.com/v1';
+const GEN_IMAGE_MODEL = 'gpt-image-2';
+const IMAGE_PROVIDERS = {
+  shopaikey: { label: 'ShopAIKey', baseUrl: SHOPAIKEY_BASE_URL },
+  openai: { label: 'OpenAI', baseUrl: OPENAI_BASE_URL },
+};
 const GEN_IMAGE_SIZES = { landscape: '1536x1024', portrait: '1024x1536' };
 const NodeActionsContext = createContext(null);
 const EdgeActionsContext = createContext(null);
@@ -94,6 +100,10 @@ function translateEnglish(value) {
 
 function normalizeGenOrientation(value) {
   return value === 'portrait' ? 'portrait' : 'landscape';
+}
+
+function normalizeImageProvider(value) {
+  return value === 'openai' ? 'openai' : 'shopaikey';
 }
 
 function useTranslation() {
@@ -205,7 +215,9 @@ async function saveImageBlobAs(blob, fileName = 'generated-image.png') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKEY_IMAGE_MODEL, size = GEN_IMAGE_SIZES.landscape, signal = undefined }) {
+async function callImageEditProvider({ apiKey, provider = 'shopaikey', prompt, images, model = GEN_IMAGE_MODEL, size = GEN_IMAGE_SIZES.landscape, signal = undefined }) {
+  const normalizedProvider = normalizeImageProvider(provider);
+  const providerConfig = IMAGE_PROVIDERS[normalizedProvider];
   const form = new FormData();
   form.append('model', model);
   form.append('prompt', prompt);
@@ -216,7 +228,7 @@ async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKE
     form.append('image[]', image.blob, image.fileName || `input-${index + 1}.png`);
   });
 
-  const response = await fetch(`${SHOPAIKEY_BASE_URL}/images/edits`, {
+  const response = await fetch(`${providerConfig.baseUrl}/images/edits`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -230,11 +242,11 @@ async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKE
   try {
     body = rawBody ? JSON.parse(rawBody) : null;
   } catch {
-    throw new Error(`ShopAIKey returned a non-JSON response: ${rawBody.slice(0, 220)}`);
+    throw new Error(`${providerConfig.label} returned a non-JSON response: ${rawBody.slice(0, 220)}`);
   }
   if (!response.ok) {
     const message = body?.error?.message || body?.message || rawBody || `HTTP ${response.status}`;
-    throw new Error(`ShopAIKey request failed: ${message}`);
+    throw new Error(`${providerConfig.label} request failed: ${message}`);
   }
   const firstImage = Array.isArray(body?.data) ? body.data[0] : null;
   if (firstImage?.b64_json) {
@@ -247,7 +259,7 @@ async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKE
     if (!imageResponse.ok) throw new Error('Generated image URL could not be downloaded');
     return imageResponse.blob();
   }
-  throw new Error('ShopAIKey response did not include generated image data');
+  throw new Error(`${providerConfig.label} response did not include generated image data`);
 }
 
 function getImageSize(src) {
@@ -1436,6 +1448,7 @@ const GenNode = memo(({ id, data, selected }) => {
   const color = data.color || '#a855f7';
   const viewMode = data.viewMode || 'expanded';
   const imageOrientation = normalizeGenOrientation(data.imageOrientation);
+  const imageProvider = normalizeImageProvider(data.imageProvider);
   const isPortrait = imageOrientation === 'portrait';
   const inputTextCount = data.inputTextCount || inputTitles.filter((item) => item.kind === 'text').length;
   const inputImageCount = data.inputImageCount || imageInputs.length;
@@ -1476,11 +1489,23 @@ const GenNode = memo(({ id, data, selected }) => {
             className="gen-generate-button nodrag"
             type="button"
             disabled={!canGenerate}
-            onClick={() => generateImage(id, { prompt: promptText, imageInputs, orientation: imageOrientation })}
+            onClick={() => generateImage(id, { prompt: promptText, imageInputs, orientation: imageOrientation, provider: imageProvider })}
             title={imageLimitExceeded ? t('Use at most 4 image inputs', 'Tá»‘i Ä‘a 4 áº£nh input') : !promptText.trim() ? t('Connect text input for prompt', 'Cáº¯m text input Ä‘á»ƒ lÃ m prompt') : !inputImageCount ? t('Connect image input', 'Cáº¯m áº£nh input') : t('Generate image', 'Táº¡o áº£nh')}
           >
             {isGenerating ? <><span className="gen-spinner"></span>{t('Generating', 'Äang táº¡o')}</> : <><Zap size={14} />{t('Generate', 'Táº¡o áº£nh')}</>}
           </button>
+          <label className="gen-provider-select nodrag" onPointerDown={(event) => event.stopPropagation()}>
+            <span>{t('Provider', 'Nguồn')}</span>
+            <select
+              value={imageProvider}
+              disabled={isGenerating}
+              onChange={(event) => updateNode(id, { imageProvider: normalizeImageProvider(event.target.value) })}
+              aria-label={t('Image generation provider', 'Nguồn generate ảnh')}
+            >
+              <option value="shopaikey">ShopAIKey</option>
+              <option value="openai">OpenAI</option>
+            </select>
+          </label>
           {data.generationError && <div className="gen-error">{data.generationError}</div>}
           <div className="mixer-footer-note example-resource-count"><span>{inputImageCount}/4 {t('images', 'áº£nh')}</span><span>{inputTextCount} text</span></div>
           <section className="example-inputs gen-inputs">
@@ -2077,6 +2102,7 @@ function FlowCanvas() {
   const [toast, setToast] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || 'dark');
   const [shopAIKey, setShopAIKey] = useState(() => localStorage.getItem(SHOPAIKEY_API_KEY) || '');
+  const [openAIKey, setOpenAIKey] = useState(() => localStorage.getItem(OPENAI_API_KEY) || '');
   const [localProjectRootPath, setLocalProjectRootPath] = useState(() => localStorage.getItem(LOCAL_PROJECT_ROOT_PATH_KEY) || '');
   const t = translateEnglish;
   const [storageReady, setStorageReady] = useState(false);
@@ -2484,6 +2510,10 @@ function FlowCanvas() {
   }, [shopAIKey]);
 
   useEffect(() => {
+    localStorage.setItem(OPENAI_API_KEY, openAIKey);
+  }, [openAIKey]);
+
+  useEffect(() => {
     localStorage.setItem(LOCAL_PROJECT_ROOT_PATH_KEY, localProjectRootPath);
   }, [localProjectRootPath]);
 
@@ -2496,11 +2526,13 @@ function FlowCanvas() {
     setNodes((current) => current.map((node) => node.id === id ? { ...node, data: { ...node.data, ...patch } } : node));
   }, []);
 
-  const generateImage = useCallback(async (id, { prompt = '', imageInputs = [], orientation = 'landscape' } = {}) => {
+  const generateImage = useCallback(async (id, { prompt = '', imageInputs = [], orientation = 'landscape', provider = 'shopaikey' } = {}) => {
     const cleanPrompt = String(prompt || '').trim();
-    const cleanApiKey = shopAIKey.trim();
     const imageOrientation = normalizeGenOrientation(orientation);
-    if (!cleanApiKey) return showToast(t('Add ShopAIKey API key in Settings first', 'HÃ£y nháº­p ShopAIKey API key trong Settings trÆ°á»›c'), 'error');
+    const imageProvider = normalizeImageProvider(provider);
+    const providerLabel = IMAGE_PROVIDERS[imageProvider].label;
+    const cleanApiKey = (imageProvider === 'openai' ? openAIKey : shopAIKey).trim();
+    if (!cleanApiKey) return showToast(t(`Add ${providerLabel} API key in Settings first`, `Hãy nhập API key ${providerLabel} trong Settings trước`), 'error');
     if (!cleanPrompt) return showToast(t('Connect text inputs to build the prompt first', 'HÃ£y káº¿t ná»‘i text input Ä‘á»ƒ táº¡o prompt trÆ°á»›c'), 'error');
     if (!imageInputs.length) return showToast(t('Connect at least one image input', 'HÃ£y káº¿t ná»‘i Ã­t nháº¥t 1 áº£nh input'), 'error');
     if (imageInputs.length > 4) return showToast(t('Gen Node supports at most 4 image inputs', 'Gen Node chá»‰ há»— trá»£ tá»‘i Ä‘a 4 áº£nh input'), 'error');
@@ -2518,9 +2550,10 @@ function FlowCanvas() {
     try {
       const images = await Promise.all(imageInputs.map((image, index) => imageUrlToNamedBlob(image.value, image.fileName || `input-${index + 1}.png`, controller.signal)));
       if (!isCurrentGeneration()) return;
-      const generatedBlob = await callShopAIKeyImageEdit({
+      const generatedBlob = await callImageEditProvider({
         apiKey: cleanApiKey,
-        model: SHOPAIKEY_IMAGE_MODEL,
+        provider: imageProvider,
+        model: GEN_IMAGE_MODEL,
         prompt: cleanPrompt,
         images,
         size: GEN_IMAGE_SIZES[imageOrientation],
@@ -2537,6 +2570,7 @@ function FlowCanvas() {
         imageWidth: dimensions.width,
         imageHeight: dimensions.height,
         imageOrientation,
+        imageProvider,
         generatedAt: new Date().toISOString(),
         isGenerating: false,
         generationError: '',
@@ -2550,7 +2584,7 @@ function FlowCanvas() {
     } finally {
       if (activeGenerationRequestsRef.current.get(id)?.token === generationToken) activeGenerationRequestsRef.current.delete(id);
     }
-  }, [activeProjectId, shopAIKey, showToast, t, updateNode]);
+  }, [activeProjectId, openAIKey, shopAIKey, showToast, t, updateNode]);
 
   const downloadGeneratedImage = useCallback(async (id) => {
     const node = nodes.find((item) => item.id === id);
@@ -3089,7 +3123,7 @@ function FlowCanvas() {
       imageNode: { title: t('New Image', 'áº¢nh má»›i'), image: '', fileName: '', viewMode: 'expanded', color: '#f59e0b' },
       mixerNode: { title: t('New Mixer', 'Mixer má»›i'), viewMode: 'expanded', color: '#7c6cf2' },
       exampleNode: { title: t('Example Node'), exampleMode: '', image: '', fileName: '', content: '', viewMode: 'expanded', color: '#10b981' },
-      genNode: { title: t('Gen Node'), image: '', fileName: '', viewMode: 'expanded', color: '#a855f7', imageOrientation: 'landscape' },
+      genNode: { title: t('Gen Node'), image: '', fileName: '', viewMode: 'expanded', color: '#a855f7', imageOrientation: 'landscape', imageProvider: 'shopaikey' },
       joinNode: { color: '#8b7cf6' },
     };
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), { id, type, position, data: defaults[type], selected: true }]);
@@ -4162,7 +4196,19 @@ function FlowCanvas() {
                   autoComplete="off"
                   aria-label={t('ShopAIKey API key')}
                 />
-                <div className="settings-path" title={SHOPAIKEY_IMAGE_MODEL}>{SHOPAIKEY_IMAGE_MODEL}</div>
+                <div className="settings-path" title={GEN_IMAGE_MODEL}>{GEN_IMAGE_MODEL}</div>
+                <div className="settings-divider" />
+                <label className="settings-label settings-field-label"><Zap size={15} /><span><strong>{t('OpenAI API key')}</strong><small>{t('Used by Gen Node when provider is OpenAI. Stored locally in this browser.', 'Dùng cho Gen Node khi chọn OpenAI. Chỉ lưu local trong trình duyệt này.')}</small></span></label>
+                <input
+                  className="settings-input"
+                  type="password"
+                  value={openAIKey}
+                  onChange={(event) => setOpenAIKey(event.target.value)}
+                  placeholder="sk-..."
+                  autoComplete="off"
+                  aria-label={t('OpenAI API key')}
+                />
+                <div className="settings-path" title={GEN_IMAGE_MODEL}>{GEN_IMAGE_MODEL}</div>
               </div>
             </section>
           </div>

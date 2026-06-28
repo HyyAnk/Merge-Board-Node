@@ -590,6 +590,11 @@ button { color: inherit; }
 .gen-generate-button { width: calc(100% - 2px); height: 34px; margin: 6px 1px 0; display: flex; align-items: center; justify-content: center; gap: 7px; color: white; background: var(--node-color); border: 0; border-radius: 8px; cursor: pointer; font: 800 9px 'Manrope'; transition: opacity .15s, transform .15s; }
 .gen-generate-button:hover:not(:disabled) { transform: translateY(-1px); }
 .gen-generate-button:disabled { opacity: .52; cursor: not-allowed; transform: none; }
+.gen-provider-select { min-height: 31px; margin: 5px 1px 0; padding: 0 7px; display: flex; align-items: center; gap: 7px; color: color-mix(in srgb, var(--node-color) 66%, #514b58); background: color-mix(in srgb, var(--node-color) 7%, transparent); border-radius: 8px; font: 800 8px 'Manrope'; }
+.gen-provider-select span { flex: 1; text-transform: uppercase; letter-spacing: .4px; }
+.gen-provider-select select { width: 116px; height: 24px; padding: 0 7px; color: inherit; background: rgba(255,255,255,.72); border: 1px solid color-mix(in srgb, var(--node-color) 28%, transparent); border-radius: 7px; outline: 0; font: 800 8.5px 'Manrope'; cursor: pointer; }
+.gen-provider-select select:focus { border-color: color-mix(in srgb, var(--node-color) 60%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 12%, transparent); }
+.gen-provider-select select:disabled { opacity: .55; cursor: not-allowed; }
 .gen-orientation-toggle { right: 84px; bottom: -14px; width: 29px; height: 29px; display: grid; place-items: center; color: var(--node-color); background: color-mix(in srgb, var(--node-color) 10%, white); border: 1px solid color-mix(in srgb, var(--node-color) 32%, transparent); border-radius: 50%; cursor: pointer; box-shadow: 0 4px 12px rgba(28,23,40,.2); transition: background .15s, border-color .15s, opacity .15s, transform .15s; }
 .gen-orientation-toggle:hover:not(:disabled) { background: color-mix(in srgb, var(--node-color) 18%, white); border-color: color-mix(in srgb, var(--node-color) 48%, transparent); transform: translateY(-1px); }
 .gen-orientation-toggle:disabled { opacity: .55; cursor: not-allowed; transform: none; }
@@ -676,6 +681,8 @@ button { color: inherit; }
 .theme-dark .gen-empty-preview { color: color-mix(in srgb, var(--node-color) 72%, #d8d4dc); }
 .theme-dark .gen-progress-overlay { background: color-mix(in srgb, var(--node-color) 16%, rgba(31,29,36,.68)); }
 .theme-dark .gen-error { color: #ff9ba4; background: #3a2027; }
+.theme-dark .gen-provider-select { color: color-mix(in srgb, var(--node-color) 76%, #d8d4dc); background: color-mix(in srgb, var(--node-color) 9%, #242229); }
+.theme-dark .gen-provider-select select { background: #29262f; border-color: color-mix(in srgb, var(--node-color) 38%, #48434f); }
 .theme-dark .gen-orientation-toggle { color: var(--node-color); background: color-mix(in srgb, var(--node-color) 13%, #29262f); border-color: color-mix(in srgb, var(--node-color) 42%, #48434f); }
 .theme-dark .gen-orientation-toggle:hover:not(:disabled) { background: color-mix(in srgb, var(--node-color) 22%, #29262f); border-color: color-mix(in srgb, var(--node-color) 58%, #48434f); }
 .theme-dark .mixer-text-segment.tone-a { color: #d1d9ed; background: rgba(91,128,201,.12); }
