@@ -71,6 +71,7 @@ const SHOPAIKEY_API_KEY = 'mergeboard-shopaikey-api-key-v1';
 const LOCAL_PROJECT_ROOT_PATH_KEY = 'mergeboard-local-project-root-path-v1';
 const SHOPAIKEY_BASE_URL = 'https://direct.shopaikey.com/v1';
 const SHOPAIKEY_IMAGE_MODEL = 'gpt-image-2';
+const GEN_IMAGE_SIZES = { landscape: '1536x1024', portrait: '1024x1536' };
 const NodeActionsContext = createContext(null);
 const EdgeActionsContext = createContext(null);
 
@@ -88,6 +89,10 @@ const ENGLISH_TEXT_REPLACEMENTS = [
 function translateEnglish(value) {
   if (typeof value !== 'string') return value;
   return ENGLISH_TEXT_REPLACEMENTS.reduce((text, [broken, replacement]) => text.replaceAll(broken, replacement), value);
+}
+
+function normalizeGenOrientation(value) {
+  return value === 'portrait' ? 'portrait' : 'landscape';
 }
 
 function useTranslation() {
@@ -199,11 +204,11 @@ async function saveImageBlobAs(blob, fileName = 'generated-image.png') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKEY_IMAGE_MODEL }) {
+async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKEY_IMAGE_MODEL, size = GEN_IMAGE_SIZES.landscape }) {
   const form = new FormData();
   form.append('model', model);
   form.append('prompt', prompt);
-  form.append('size', '1536x1024');
+  form.append('size', size);
   form.append('quality', 'high');
   form.append('n', '1');
   images.forEach((image, index) => {
@@ -1382,7 +1387,7 @@ const ExampleNode = memo(({ id, data, selected }) => {
 
 const GenNode = memo(({ id, data, selected }) => {
   const t = useTranslation();
-  const { generateImage, focusNode, revealAsset, downloadGeneratedImage } = useContext(NodeActionsContext);
+  const { generateImage, focusNode, revealAsset, downloadGeneratedImage, updateNode } = useContext(NodeActionsContext);
   const [previewOpen, setPreviewOpen] = useState(false);
   const inputTitles = data.inputTitles || [];
   const imageInputs = data.imageInputs || [];
@@ -1390,6 +1395,8 @@ const GenNode = memo(({ id, data, selected }) => {
   const isGenerating = Boolean(data.isGenerating);
   const color = data.color || '#a855f7';
   const viewMode = data.viewMode || 'expanded';
+  const imageOrientation = normalizeGenOrientation(data.imageOrientation);
+  const isPortrait = imageOrientation === 'portrait';
   const inputTextCount = data.inputTextCount || inputTitles.filter((item) => item.kind === 'text').length;
   const inputImageCount = data.inputImageCount || imageInputs.length;
   const inputTitleListText = inputTitles.map((item) => item.title || t('Untitled node', 'Node chÆ°a Ä‘áº·t tÃªn')).join('\n');
@@ -1402,7 +1409,7 @@ const GenNode = memo(({ id, data, selected }) => {
         <PortStack ports={data.inputPorts} type="target" position={Position.Left} color={color} />
         <NodeHeader icon={Zap} title={data.title} nodeId={id} viewMode={viewMode} color={color} />
         <div className="gen-content nowheel">
-          <div className={`gen-preview ${isGenerating ? 'is-generating' : ''}`} onDoubleClick={(event) => { if (data.image) { event.stopPropagation(); setPreviewOpen(true); } }}>
+          <div className={`gen-preview orientation-${imageOrientation} ${isGenerating ? 'is-generating' : ''}`} onDoubleClick={(event) => { if (data.image) { event.stopPropagation(); setPreviewOpen(true); } }}>
             {data.image ? (
               <>
                 <img src={data.image} alt={data.title || t('Generated image')} draggable="false" />
@@ -1429,7 +1436,7 @@ const GenNode = memo(({ id, data, selected }) => {
             className="gen-generate-button nodrag"
             type="button"
             disabled={!canGenerate}
-            onClick={() => generateImage(id, { prompt: promptText, imageInputs })}
+            onClick={() => generateImage(id, { prompt: promptText, imageInputs, orientation: imageOrientation })}
             title={imageLimitExceeded ? t('Use at most 4 image inputs', 'Tá»‘i Ä‘a 4 áº£nh input') : !promptText.trim() ? t('Connect text input for prompt', 'Cáº¯m text input Ä‘á»ƒ lÃ m prompt') : !inputImageCount ? t('Connect image input', 'Cáº¯m áº£nh input') : t('Generate image', 'Táº¡o áº£nh')}
           >
             {isGenerating ? <><span className="gen-spinner"></span>{t('Generating', 'Äang táº¡o')}</> : <><Zap size={14} />{t('Generate', 'Táº¡o áº£nh')}</>}
@@ -1452,6 +1459,21 @@ const GenNode = memo(({ id, data, selected }) => {
           </section>
         </div>
         <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
+        <button
+          className={`node-border-copy gen-orientation-toggle ${isPortrait ? 'is-portrait' : 'is-landscape'}`}
+          type="button"
+          aria-pressed={isPortrait}
+          aria-label={isPortrait ? t('Use landscape output', 'Chuyển sang ảnh ngang') : t('Use portrait output', 'Chuyển sang ảnh dọc')}
+          title={isPortrait ? t('Portrait output · click for landscape', 'Ảnh dọc · bấm để chuyển ảnh ngang') : t('Landscape output · click for portrait', 'Ảnh ngang · bấm để chuyển ảnh dọc')}
+          disabled={isGenerating}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            updateNode(id, { imageOrientation: isPortrait ? 'landscape' : 'portrait' });
+          }}
+        >
+          <span className="gen-orientation-icon" aria-hidden="true"></span>
+        </button>
         <div className="node-border-copy example-input-title-copy" title={t('Copy input node title list')}>
           <CopyButton value={inputTitleListText} />
         </div>
@@ -1958,12 +1980,12 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
               </div>
             ))}
           </div>
-          <form className="project-create" onSubmit={(event) => { event.preventDefault(); if (newName.trim()) { onCreate(newName.trim()); setNewName(''); setOpen(false); } }}>
-            <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder={t('New project name', 'TÃªn project má»›i')} aria-label={t('New project name', 'TÃªn project má»›i')} />
-            <button type="submit" disabled={!newName.trim()} aria-label={t('Create project', 'Táº¡o project')}><FolderPlus size={14} /></button>
-          </form>
         </div>
       )}
+      <form className="project-create" onSubmit={(event) => { event.preventDefault(); if (newName.trim()) { onCreate(newName.trim()); setNewName(''); setOpen(false); } }}>
+        <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder={t('New project name', 'TÃªn project má»›i')} aria-label={t('New project name', 'TÃªn project má»›i')} />
+        <button type="submit" disabled={!newName.trim()} aria-label={t('Create project', 'Táº¡o project')}><FolderPlus size={14} /></button>
+      </form>
     </div>
   );
 }
@@ -2429,9 +2451,10 @@ function FlowCanvas() {
     setNodes((current) => current.map((node) => node.id === id ? { ...node, data: { ...node.data, ...patch } } : node));
   }, []);
 
-  const generateImage = useCallback(async (id, { prompt = '', imageInputs = [] } = {}) => {
+  const generateImage = useCallback(async (id, { prompt = '', imageInputs = [], orientation = 'landscape' } = {}) => {
     const cleanPrompt = String(prompt || '').trim();
     const cleanApiKey = shopAIKey.trim();
+    const imageOrientation = normalizeGenOrientation(orientation);
     if (!cleanApiKey) return showToast(t('Add ShopAIKey API key in Settings first', 'HÃ£y nháº­p ShopAIKey API key trong Settings trÆ°á»›c'), 'error');
     if (!cleanPrompt) return showToast(t('Connect text inputs to build the prompt first', 'HÃ£y káº¿t ná»‘i text input Ä‘á»ƒ táº¡o prompt trÆ°á»›c'), 'error');
     if (!imageInputs.length) return showToast(t('Connect at least one image input', 'HÃ£y káº¿t ná»‘i Ã­t nháº¥t 1 áº£nh input'), 'error');
@@ -2447,6 +2470,7 @@ function FlowCanvas() {
         model: SHOPAIKEY_IMAGE_MODEL,
         prompt: cleanPrompt,
         images,
+        size: GEN_IMAGE_SIZES[imageOrientation],
       });
       const uploaded = await fileStorage.uploadAsset(activeProject, generatedBlob, `gen-node-${Date.now()}.png`);
       const dimensions = await getImageSize(uploaded.url);
@@ -2456,6 +2480,7 @@ function FlowCanvas() {
         fileName: uploaded.fileName,
         imageWidth: dimensions.width,
         imageHeight: dimensions.height,
+        imageOrientation,
         generatedAt: new Date().toISOString(),
         isGenerating: false,
         generationError: '',
@@ -2864,7 +2889,7 @@ function FlowCanvas() {
       imageNode: { title: t('New Image', 'áº¢nh má»›i'), image: '', fileName: '', viewMode: 'expanded', color: '#f59e0b' },
       mixerNode: { title: t('New Mixer', 'Mixer má»›i'), viewMode: 'expanded', color: '#7c6cf2' },
       exampleNode: { title: t('Example Node'), exampleMode: '', image: '', fileName: '', content: '', viewMode: 'expanded', color: '#10b981' },
-      genNode: { title: t('Gen Node'), image: '', fileName: '', viewMode: 'expanded', color: '#a855f7' },
+      genNode: { title: t('Gen Node'), image: '', fileName: '', viewMode: 'expanded', color: '#a855f7', imageOrientation: 'landscape' },
       joinNode: { color: '#8b7cf6' },
     };
     setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), { id, type, position, data: defaults[type], selected: true }]);
