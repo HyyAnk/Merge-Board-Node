@@ -69,6 +69,7 @@ const ACTIVE_PROJECT_KEY = 'mergeboard-active-project-v1';
 const THEME_KEY = 'mergeboard-theme-v1';
 const SHOPAIKEY_API_KEY = 'mergeboard-shopaikey-api-key-v1';
 const LOCAL_PROJECT_ROOT_PATH_KEY = 'mergeboard-local-project-root-path-v1';
+const NODE_CLIPBOARD_MARKER = 'MERGEBOARD_NODE_CLIPBOARD_V1';
 const SHOPAIKEY_BASE_URL = 'https://direct.shopaikey.com/v1';
 const SHOPAIKEY_IMAGE_MODEL = 'gpt-image-2';
 const GEN_IMAGE_SIZES = { landscape: '1536x1024', portrait: '1024x1536' };
@@ -174,8 +175,8 @@ async function dataUrlToBlob(dataUrl) {
   return response.blob();
 }
 
-async function imageUrlToNamedBlob(src, fileName = 'input.png') {
-  const response = await fetch(src);
+async function imageUrlToNamedBlob(src, fileName = 'input.png', signal = undefined) {
+  const response = await fetch(src, { signal });
   if (!response.ok) throw new Error(`Could not read input image: ${fileName}`);
   const blob = await response.blob();
   return { blob, fileName, type: blob.type || 'image/png' };
@@ -204,7 +205,7 @@ async function saveImageBlobAs(blob, fileName = 'generated-image.png') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKEY_IMAGE_MODEL, size = GEN_IMAGE_SIZES.landscape }) {
+async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKEY_IMAGE_MODEL, size = GEN_IMAGE_SIZES.landscape, signal = undefined }) {
   const form = new FormData();
   form.append('model', model);
   form.append('prompt', prompt);
@@ -222,6 +223,7 @@ async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKE
       Accept: 'application/json',
     },
     body: form,
+    signal,
   });
   const rawBody = await response.text();
   let body = null;
@@ -241,7 +243,7 @@ async function callShopAIKeyImageEdit({ apiKey, prompt, images, model = SHOPAIKE
     return new Blob([bytes], { type: 'image/png' });
   }
   if (firstImage?.url) {
-    const imageResponse = await fetch(firstImage.url);
+    const imageResponse = await fetch(firstImage.url, { signal });
     if (!imageResponse.ok) throw new Error('Generated image URL could not be downloaded');
     return imageResponse.blob();
   }
@@ -376,9 +378,47 @@ function sortInputTitles(items) {
   });
 }
 
+function createHistoryNodeData(data = {}) {
+  const next = { ...data };
+  delete next.isGenerating;
+  return next;
+}
+
+function cleanNodeDataForTransfer(data = {}) {
+  const next = JSON.parse(JSON.stringify(createHistoryNodeData(data)));
+  [
+    'resources',
+    'resourceCount',
+    'inputPorts',
+    'outputPorts',
+    'inputTitles',
+    'imageInputs',
+    'promptText',
+    'inputImageCount',
+    'inputTextCount',
+    'moveEnabled',
+    'joinReversed',
+    'relatedHighlighted',
+  ].forEach((key) => delete next[key]);
+  return next;
+}
+
+async function imageReferenceToDataUrl(project, assetFile = '', image = '') {
+  if (assetFile) {
+    const file = await fileStorage.readAssetFile(project, assetFile);
+    return { dataUrl: await fileToDataUrl(file), fileName: file.name || assetFile };
+  }
+  if (!image) return null;
+  if (String(image).startsWith('data:')) return { dataUrl: image, fileName: 'image.png' };
+  const response = await fetch(image);
+  if (!response.ok) return null;
+  const blob = await response.blob();
+  return { dataUrl: await fileToDataUrl(blob), fileName: 'image.png' };
+}
+
 function createGraphSnapshot(nodes, edges) {
   const snapshot = {
-    nodes: nodes.map(({ selected: _selected, dragging: _dragging, measured: _measured, ...node }) => ({ ...node, selected: false, data: { ...(node.data || {}) } })),
+    nodes: nodes.map(({ selected: _selected, dragging: _dragging, measured: _measured, ...node }) => ({ ...node, selected: false, data: createHistoryNodeData(node.data) })),
     edges: edges.map(({ selected: _selected, ...edge }) => ({ ...edge, selected: false, data: { ...(edge.data || {}) } })),
   };
   return { ...snapshot, signature: JSON.stringify(snapshot) };
@@ -2068,6 +2108,8 @@ function FlowCanvas() {
   const historyTimerRef = useRef(null);
   const historyApplyingRef = useRef(false);
   const latestSnapshotRef = useRef(null);
+  const generationRunRef = useRef(0);
+  const activeGenerationRequestsRef = useRef(new Map());
   const duplicateDeltaRef = useRef({ x: 42, y: 42 });
   const pendingDuplicateRef = useRef(null);
   const routeCacheRef = useRef(new Map());
@@ -2263,9 +2305,12 @@ function FlowCanvas() {
 
   const restoreHistorySnapshot = useCallback((snapshot) => {
     if (!snapshot) return;
+    activeGenerationRequestsRef.current.forEach((request) => request.controller?.abort());
+    activeGenerationRequestsRef.current.clear();
+    generationRunRef.current += 1;
     historyApplyingRef.current = true;
     latestSnapshotRef.current = snapshot;
-    setNodes(snapshot.nodes.map((node) => ({ ...node, data: { ...(node.data || {}) } })));
+    setNodes(snapshot.nodes.map((node) => ({ ...node, data: createHistoryNodeData(node.data) })));
     setEdges(snapshot.edges.map((edge) => ({ ...edge, data: { ...(edge.data || {}) } })));
     setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); setSectionDraft(null);
   }, []);
@@ -2462,18 +2507,29 @@ function FlowCanvas() {
     const activeProject = projectsRef.current.find((item) => item.id === activeProjectId);
     if (!activeProject) return showToast(t('No active project found', 'KhÃ´ng tÃ¬m tháº¥y project Ä‘ang má»Ÿ'), 'error');
 
+    activeGenerationRequestsRef.current.get(id)?.controller?.abort();
+    const controller = new AbortController();
+    generationRunRef.current += 1;
+    const generationToken = generationRunRef.current;
+    activeGenerationRequestsRef.current.set(id, { token: generationToken, controller });
+    const isCurrentGeneration = () => activeGenerationRequestsRef.current.get(id)?.token === generationToken && !controller.signal.aborted;
+
     updateNode(id, { isGenerating: true, generationError: '' });
     try {
-      const images = await Promise.all(imageInputs.map((image, index) => imageUrlToNamedBlob(image.value, image.fileName || `input-${index + 1}.png`)));
+      const images = await Promise.all(imageInputs.map((image, index) => imageUrlToNamedBlob(image.value, image.fileName || `input-${index + 1}.png`, controller.signal)));
+      if (!isCurrentGeneration()) return;
       const generatedBlob = await callShopAIKeyImageEdit({
         apiKey: cleanApiKey,
         model: SHOPAIKEY_IMAGE_MODEL,
         prompt: cleanPrompt,
         images,
         size: GEN_IMAGE_SIZES[imageOrientation],
+        signal: controller.signal,
       });
+      if (!isCurrentGeneration()) return;
       const uploaded = await fileStorage.uploadAsset(activeProject, generatedBlob, `gen-node-${Date.now()}.png`);
       const dimensions = await getImageSize(uploaded.url);
+      if (!isCurrentGeneration()) return;
       updateNode(id, {
         image: uploaded.url,
         assetFile: uploaded.assetFile,
@@ -2487,9 +2543,12 @@ function FlowCanvas() {
       });
       showToast(t('Image generated', 'ÄÃ£ táº¡o áº£nh'));
     } catch (error) {
+      if (error.name === 'AbortError' || !isCurrentGeneration()) return;
       const message = error.message || t('Image generation failed', 'Táº¡o áº£nh tháº¥t báº¡i');
       updateNode(id, { isGenerating: false, generationError: message });
       showToast(message, 'error');
+    } finally {
+      if (activeGenerationRequestsRef.current.get(id)?.token === generationToken) activeGenerationRequestsRef.current.delete(id);
     }
   }, [activeProjectId, shopAIKey, showToast, t, updateNode]);
 
@@ -2655,9 +2714,150 @@ function FlowCanvas() {
     return true;
   }, [screenToFlowPosition, showToast, t]);
 
+  const copySelectedNodes = useCallback(async () => {
+    const selectedNodes = nodes.filter((node) => node.selected);
+    if (!selectedNodes.length) {
+      showToast(t('Select one or more nodes to copy', 'Hãy chọn node để copy'), 'error');
+      return;
+    }
+    try {
+      const project = projectsRef.current.find((item) => item.id === activeProjectId);
+      if (!project) throw new Error(t('No active project found', 'Không tìm thấy project đang mở'));
+      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+      const minX = Math.min(...selectedNodes.map((node) => node.position?.x || 0));
+      const minY = Math.min(...selectedNodes.map((node) => node.position?.y || 0));
+      const packageNodes = await Promise.all(selectedNodes.map(async (node) => {
+        const data = cleanNodeDataForTransfer(node.data || {});
+        const assets = {};
+        if (['imageNode', 'exampleNode', 'genNode', 'canvasImageNode'].includes(node.type)) {
+          assets.image = await imageReferenceToDataUrl(project, data.assetFile, data.image);
+          delete data.image;
+          delete data.assetFile;
+        }
+        if (node.type === 'carouselNode' && Array.isArray(data.images)) {
+          const carouselAssets = {};
+          data.images = await Promise.all(data.images.map(async (card) => {
+            const nextCard = { ...(card || {}) };
+            const cardAsset = await imageReferenceToDataUrl(project, nextCard.assetFile, nextCard.image);
+            if (cardAsset) carouselAssets[nextCard.id] = cardAsset;
+            delete nextCard.image;
+            delete nextCard.assetFile;
+            return nextCard;
+          }));
+          assets.carousel = carouselAssets;
+        }
+        return {
+          id: node.id,
+          type: node.type,
+          position: { x: (node.position?.x || 0) - minX, y: (node.position?.y || 0) - minY },
+          data,
+          assets,
+        };
+      }));
+      const packageData = {
+        marker: NODE_CLIPBOARD_MARKER,
+        version: 1,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: new Date().toISOString(),
+        nodes: packageNodes,
+        edges: edges
+          .filter((edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target))
+          .map((edge) => ({ source: edge.source, target: edge.target, data: { ...(edge.data || {}) } })),
+      };
+      await fileStorage.writeNodeClipboardPackage(packageData);
+      try {
+        await navigator.clipboard.writeText(`${NODE_CLIPBOARD_MARKER}:${packageData.id}`);
+      } catch {
+        // The IndexedDB package is still available to this browser session.
+      }
+      showToast(t(`Copied ${packageNodes.length} node(s)`, `Đã copy ${packageNodes.length} node`));
+    } catch (error) {
+      showToast(error.message || t('Could not copy selected nodes', 'Không thể copy node đã chọn'), 'error');
+    }
+  }, [activeProjectId, edges, nodes, showToast, t]);
+
+  const pasteNodeClipboardPackage = useCallback(async () => {
+    try {
+      if (!activeProjectId) throw new Error(t('No project selected', 'Chưa chọn project'));
+      const project = projectsRef.current.find((item) => item.id === activeProjectId);
+      const packageData = await fileStorage.readNodeClipboardPackage();
+      if (packageData?.marker !== NODE_CLIPBOARD_MARKER || !Array.isArray(packageData.nodes) || !packageData.nodes.length) return false;
+      const timestamp = Date.now();
+      const center = screenToFlowPosition({ x: window.innerWidth / 2 + 80, y: window.innerHeight / 2 });
+      const idMap = new Map(packageData.nodes.map((node, index) => [node.id, `${node.type}-${timestamp}-${index}`]));
+      const pastedNodes = await Promise.all(packageData.nodes.map(async (node) => {
+        const data = cleanNodeDataForTransfer(node.data || {});
+        if (node.assets?.image?.dataUrl) {
+          const blob = await dataUrlToBlob(node.assets.image.dataUrl);
+          const uploaded = await fileStorage.uploadAsset(project, blob, node.assets.image.fileName || data.fileName || 'image.png');
+          data.image = uploaded.url;
+          data.assetFile = uploaded.assetFile;
+          data.fileName = uploaded.fileName;
+        }
+        if (node.type === 'carouselNode' && Array.isArray(data.images)) {
+          data.images = await Promise.all(data.images.map(async (card, index) => {
+            const nextCard = { ...(card || {}), id: `carousel-card-${timestamp}-${index}-${Math.random().toString(36).slice(2, 7)}` };
+            const cardAsset = node.assets?.carousel?.[card.id];
+            if (cardAsset?.dataUrl) {
+              const blob = await dataUrlToBlob(cardAsset.dataUrl);
+              const uploaded = await fileStorage.uploadAsset(project, blob, cardAsset.fileName || nextCard.fileName || 'image.png');
+              nextCard.image = uploaded.url;
+              nextCard.assetFile = uploaded.assetFile;
+              nextCard.fileName = uploaded.fileName;
+            }
+            return nextCard;
+          }));
+        }
+        return {
+          id: idMap.get(node.id),
+          type: node.type,
+          position: { x: center.x + (node.position?.x || 0), y: center.y + (node.position?.y || 0) },
+          data,
+          selected: true,
+        };
+      }));
+      const pastedEdges = (packageData.edges || [])
+        .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+        .map((edge, index) => {
+          const edgeId = `edge-${timestamp}-${index}-${Math.random().toString(36).slice(2, 7)}`;
+          return {
+            id: edgeId,
+            source: idMap.get(edge.source),
+            target: idMap.get(edge.target),
+            sourceHandle: `out-${edgeId}`,
+            targetHandle: `in-${edgeId}`,
+            type: 'beam',
+            data: { ...(edge.data || {}) },
+          };
+        });
+      setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), ...pastedNodes]);
+      setEdges((current) => [...current.map((edge) => ({ ...edge, selected: false })), ...pastedEdges]);
+      setToolMode('select');
+      setContextMenu(null);
+      setEdgeMenu(null);
+      setJoinMenu(null);
+      setCanvasImageMenu(null);
+      showToast(t(`Pasted ${pastedNodes.length} node(s)`, `Đã paste ${pastedNodes.length} node`));
+      return true;
+    } catch (error) {
+      showToast(error.message || t('Could not paste copied nodes', 'Không thể paste node đã copy'), 'error');
+      return true;
+    }
+  }, [activeProjectId, screenToFlowPosition, showToast, t]);
+
   useEffect(() => {
     const onPaste = async (event) => {
       const editingTarget = event.target?.closest?.('input, textarea, [contenteditable="true"]');
+      const clipboardText = event.clipboardData?.getData('text/plain') || '';
+      if (clipboardText.startsWith(`${NODE_CLIPBOARD_MARKER}:`)) {
+        event.preventDefault();
+        if (editingTarget) {
+          showToast(t('Node clipboard can only be pasted on the canvas', 'Chỉ paste clipboard node trên canvas'), 'error');
+          return;
+        }
+        await pasteNodeClipboardPackage();
+        return;
+      }
       let files = [...(event.clipboardData?.files || [])].filter((item) => item.type.startsWith('image/'));
       if (!files.length) {
         files = [...(event.clipboardData?.items || [])]
@@ -2737,7 +2937,7 @@ function FlowCanvas() {
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [addCanvasImages, addTextNodeFromClipboard, nodes, showToast, t, updateNode, uploadCarouselImage, uploadImage]);
+  }, [addCanvasImages, addTextNodeFromClipboard, nodes, pasteNodeClipboardPackage, showToast, t, updateNode, uploadCarouselImage, uploadImage]);
 
   const removeNode = useCallback((id) => {
     setNodes((current) => current.filter((node) => node.id !== id));
@@ -2977,6 +3177,16 @@ function FlowCanvas() {
         redoGraph();
         return;
       }
+      if (modifier && key === 'c') {
+        event.preventDefault();
+        copySelectedNodes();
+        return;
+      }
+      if (modifier && key === 'x') {
+        event.preventDefault();
+        showToast(t('Cross-project cut is disabled. Copy, paste, then delete after checking.', 'Không bật Cut giữa project. Hãy copy, paste rồi kiểm tra trước khi xóa.'), 'error');
+        return;
+      }
       if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'v') {
         event.preventDefault(); setToolMode('select'); setSectionDraft(null); return;
       }
@@ -2989,7 +3199,7 @@ function FlowCanvas() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [duplicateSelected, redoGraph, undoGraph]);
+  }, [copySelectedNodes, duplicateSelected, redoGraph, showToast, t, undoGraph]);
 
   const openCanvasMenu = useCallback((event) => {
     event.preventDefault();

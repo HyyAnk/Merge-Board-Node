@@ -1,6 +1,7 @@
 const DB_NAME = 'mergeboard-file-system';
 const STORE_NAME = 'handles';
 const ROOT_KEY = 'project-root';
+const NODE_CLIPBOARD_KEY = 'node-clipboard';
 const WORKSPACE_META_FILE = '.mergeboard-workspace.json';
 
 let rootHandle = null;
@@ -386,6 +387,21 @@ export async function uploadAsset(project, file, preferredName = '') {
   await writeFile(assets, assetFile, file);
   const storedFile = await (await assets.getFileHandle(assetFile)).getFile();
   return { url: makeObjectUrl(storedFile), assetFile, fileName: preferredName || file.name || assetFile };
+}
+
+export async function readAssetFile(project, assetFile) {
+  if (!project?.folder || !assetFile) throw new Error('Asset file is not available');
+  const directory = await getProjectDirectory(project.folder);
+  const assets = await directory.getDirectoryHandle('assets');
+  return (await assets.getFileHandle(assetFile)).getFile();
+}
+
+export async function writeNodeClipboardPackage(packageData) {
+  await databaseRequest('readwrite', (store) => store.put(packageData, NODE_CLIPBOARD_KEY));
+}
+
+export async function readNodeClipboardPackage() {
+  return databaseRequest('readonly', (store) => store.get(NODE_CLIPBOARD_KEY));
 }
 
 export async function revealAsset(project, assetFile, rootPath = '') {
