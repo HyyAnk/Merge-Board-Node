@@ -77,6 +77,7 @@ const IMAGE_PROVIDERS = {
   shopaikey: { label: 'ShopAIKey', baseUrl: SHOPAIKEY_BASE_URL },
   openai: { label: 'OpenAI', baseUrl: OPENAI_BASE_URL },
 };
+const GEN_IMAGE_INPUT_LIMITS = { shopaikey: 4, openai: Infinity };
 const GEN_IMAGE_SIZES = { landscape: '1536x1024', portrait: '1024x1536' };
 const NodeActionsContext = createContext(null);
 const EdgeActionsContext = createContext(null);
@@ -1564,8 +1565,11 @@ const GenNode = memo(({ id, data, selected }) => {
   const inputTextCount = data.inputTextCount || inputTitles.filter((item) => item.kind === 'text').length;
   const inputImageCount = data.inputImageCount || imageInputs.length;
   const inputTitleListText = inputTitles.map((item) => item.title || t('Untitled node', 'Node chÆ°a Ä‘áº·t tÃªn')).join('\n');
-  const imageLimitExceeded = inputImageCount > 4;
+  const imageInputLimit = GEN_IMAGE_INPUT_LIMITS[imageProvider] ?? 4;
+  const hasImageInputLimit = Number.isFinite(imageInputLimit);
+  const imageLimitExceeded = hasImageInputLimit && inputImageCount > imageInputLimit;
   const canGenerate = !isGenerating && promptText.trim() && inputImageCount > 0 && !imageLimitExceeded;
+  const imageCountLabel = hasImageInputLimit ? `${inputImageCount}/${imageInputLimit}` : `${inputImageCount}`;
 
   return (
     <>
@@ -1601,7 +1605,7 @@ const GenNode = memo(({ id, data, selected }) => {
             type="button"
             disabled={!canGenerate}
             onClick={() => generateImage(id, { prompt: promptText, imageInputs, orientation: imageOrientation, provider: imageProvider })}
-            title={imageLimitExceeded ? t('Use at most 4 image inputs', 'Tá»‘i Ä‘a 4 áº£nh input') : !promptText.trim() ? t('Connect text input for prompt', 'Cáº¯m text input Ä‘á»ƒ lÃ m prompt') : !inputImageCount ? t('Connect image input', 'Cáº¯m áº£nh input') : t('Generate image', 'Táº¡o áº£nh')}
+            title={imageLimitExceeded ? t(`Use at most ${imageInputLimit} image inputs with ${IMAGE_PROVIDERS[imageProvider].label}`, `${IMAGE_PROVIDERS[imageProvider].label} tá»‘i Ä‘a ${imageInputLimit} áº£nh input`) : !promptText.trim() ? t('Connect text input for prompt', 'Cáº¯m text input Ä‘á»ƒ lÃ m prompt') : !inputImageCount ? t('Connect image input', 'Cáº¯m áº£nh input') : t('Generate image', 'Táº¡o áº£nh')}
           >
             {isGenerating ? <><span className="gen-spinner"></span>{t('Generating', 'Äang táº¡o')}</> : <><Zap size={14} />{t('Generate', 'Táº¡o áº£nh')}</>}
           </button>
@@ -1618,7 +1622,7 @@ const GenNode = memo(({ id, data, selected }) => {
             </select>
           </label>
           {data.generationError && <div className="gen-error">{data.generationError}</div>}
-          <div className="mixer-footer-note example-resource-count"><span>{inputImageCount}/4 {t('images', 'áº£nh')}</span><span>{inputTextCount} text</span></div>
+          <div className="mixer-footer-note example-resource-count"><span>{imageCountLabel} {t('images', 'áº£nh')}</span><span>{inputTextCount} text</span></div>
           <section className="example-inputs gen-inputs">
             <div className="example-inputs-label"><Layers3 size={12} /> INPUT NODE · {inputTitles.length}</div>
             {inputTitles.length ? inputTitles.map((item) => (
@@ -1631,7 +1635,7 @@ const GenNode = memo(({ id, data, selected }) => {
                   </div>
                 )}
               </div>
-            )) : <div className="example-empty">{t('Connect Text and up to 4 Image inputs.', 'Cáº¯m Text vÃ  tá»‘i Ä‘a 4 áº£nh input.')}</div>}
+            )) : <div className="example-empty">{hasImageInputLimit ? t(`Connect Text and up to ${imageInputLimit} Image inputs.`, `Cáº¯m Text vÃ  tá»‘i Ä‘a ${imageInputLimit} áº£nh input.`) : t('Connect Text and Image inputs.', 'Cáº¯m Text vÃ  cÃ¡c áº£nh input.')}</div>}
           </section>
         </div>
         <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
@@ -2425,10 +2429,11 @@ function FlowCanvas() {
     const imageProvider = normalizeImageProvider(provider);
     const providerLabel = IMAGE_PROVIDERS[imageProvider].label;
     const cleanApiKey = (imageProvider === 'openai' ? openAIKey : shopAIKey).trim();
+    const imageInputLimit = GEN_IMAGE_INPUT_LIMITS[imageProvider] ?? 4;
     if (!cleanApiKey) return showToast(t(`Add ${providerLabel} API key in Settings first`, `Hãy nhập API key ${providerLabel} trong Settings trước`), 'error');
     if (!cleanPrompt) return showToast(t('Connect text inputs to build the prompt first', 'HÃ£y káº¿t ná»‘i text input Ä‘á»ƒ táº¡o prompt trÆ°á»›c'), 'error');
     if (!imageInputs.length) return showToast(t('Connect at least one image input', 'HÃ£y káº¿t ná»‘i Ã­t nháº¥t 1 áº£nh input'), 'error');
-    if (imageInputs.length > 4) return showToast(t('Gen Node supports at most 4 image inputs', 'Gen Node chá»‰ há»— trá»£ tá»‘i Ä‘a 4 áº£nh input'), 'error');
+    if (Number.isFinite(imageInputLimit) && imageInputs.length > imageInputLimit) return showToast(t(`${providerLabel} supports at most ${imageInputLimit} image inputs`, `${providerLabel} chá»‰ há»— trá»£ tá»‘i Ä‘a ${imageInputLimit} áº£nh input`), 'error');
     const activeProject = projectsRef.current.find((item) => item.id === activeProjectId);
     if (!activeProject) return showToast(t('No active project found', 'KhÃ´ng tÃ¬m tháº¥y project Ä‘ang má»Ÿ'), 'error');
 
