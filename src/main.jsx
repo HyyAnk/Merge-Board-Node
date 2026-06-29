@@ -478,6 +478,24 @@ function setTextareaCaretFromPoint(textarea, clientX, clientY) {
   return false;
 }
 
+function fitTextareaHeightPreservingCaret(element, enabled = true) {
+  if (!element) return;
+  if (!enabled) {
+    element.style.height = '';
+    return;
+  }
+  const isFocused = document.activeElement === element;
+  const selectionStart = element.selectionStart;
+  const selectionEnd = element.selectionEnd;
+  const scrollTop = element.scrollTop;
+  element.style.height = 'auto';
+  element.style.height = `${element.scrollHeight}px`;
+  element.scrollTop = scrollTop;
+  if (isFocused && Number.isFinite(selectionStart) && Number.isFinite(selectionEnd)) {
+    element.setSelectionRange(selectionStart, selectionEnd);
+  }
+}
+
 function textOffsetFromPoint(root, clientX, clientY) {
   try {
     const caret = typeof document.caretPositionFromPoint === 'function'
@@ -508,7 +526,11 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
   const t = useTranslation();
   const { updateNode } = useContext(NodeActionsContext);
   const [open, setOpen] = useState(false);
+  const [draftNote, setDraftNote] = useState(note || '');
   const textareaRef = useRef(null);
+  const draftNoteRef = useRef(note || '');
+  const latestNoteRef = useRef(note || '');
+  const focusedNoteRef = useRef(false);
   const hasNote = Boolean(note?.trim());
   const nodeLayout = useStore(useCallback((state) => {
     const node = state.nodeLookup.get(nodeId);
@@ -520,15 +542,32 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
       height: node.measured.height || node.height || 0,
     };
   }, [nodeId]), sameNoteNodeLayout);
+  useEffect(() => {
+    latestNoteRef.current = note || '';
+    if (!focusedNoteRef.current) {
+      draftNoteRef.current = note || '';
+      setDraftNote(note || '');
+    }
+  }, [note]);
+
   const fitNoteHeight = useCallback((element = textareaRef.current) => {
-    if (!element) return;
-    element.style.height = 'auto';
-    element.style.height = `${element.scrollHeight}px`;
+    fitTextareaHeightPreservingCaret(element, true);
   }, []);
+
+  const commitNote = useCallback(() => {
+    const nextNote = draftNoteRef.current;
+    if (nextNote !== latestNoteRef.current) updateNode(nodeId, { note: nextNote });
+  }, [nodeId, updateNode]);
 
   useLayoutEffect(() => {
     if (open) fitNoteHeight();
-  }, [fitNoteHeight, note, open]);
+  }, [draftNote, fitNoteHeight, open]);
+
+  useEffect(() => {
+    if (!open || !focusedNoteRef.current) return undefined;
+    const timer = window.setTimeout(commitNote, 250);
+    return () => window.clearTimeout(timer);
+  }, [commitNote, draftNote, open]);
 
   const focusNoteAtPoint = useCallback((event) => {
     event.stopPropagation();
@@ -571,9 +610,18 @@ function NodeNoteControl({ nodeId, note = '', color = NODE_COLORS[0], className 
             <textarea
               ref={textareaRef}
               className="node-note-textarea nowheel"
-              value={note || ''}
+              value={draftNote}
               placeholder={t('Write a quick noteâ€¦', 'Nháº­p ghi chÃº nhanh...')}
-              onChange={(event) => { updateNode(nodeId, { note: event.target.value }); fitNoteHeight(event.currentTarget); }}
+              onFocus={() => { focusedNoteRef.current = true; }}
+              onChange={(event) => {
+                draftNoteRef.current = event.target.value;
+                setDraftNote(event.target.value);
+                fitNoteHeight(event.currentTarget);
+              }}
+              onBlur={() => {
+                focusedNoteRef.current = false;
+                commitNote();
+              }}
               onDoubleClick={focusNoteAtPoint}
               autoFocus
             />
@@ -652,16 +700,7 @@ function NodeHeader({ title, nodeId, viewMode = 'expanded', color = NODE_COLORS[
 
   const fitTitleHeight = useCallback((element = titleRef.current) => {
     if (!element || hideTitle) return;
-    const isFocused = document.activeElement === element;
-    const selectionStart = element.selectionStart;
-    const selectionEnd = element.selectionEnd;
-    const scrollTop = element.scrollTop;
-    element.style.height = 'auto';
-    element.style.height = `${element.scrollHeight}px`;
-    element.scrollTop = scrollTop;
-    if (isFocused && Number.isFinite(selectionStart) && Number.isFinite(selectionEnd)) {
-      element.setSelectionRange(selectionStart, selectionEnd);
-    }
+    fitTextareaHeightPreservingCaret(element, true);
   }, [hideTitle]);
 
   const commitTitle = useCallback(() => {
@@ -754,19 +793,40 @@ const TextNode = memo(({ id, data, selected }) => {
   const { updateNode } = useContext(NodeActionsContext);
   const viewMode = data.viewMode || 'expanded';
   const color = data.color || '#3b82f6';
+  const content = data.content || '';
   const editorRef = useRef(null);
   const pendingCaretOffsetRef = useRef(null);
+  const [draftContent, setDraftContent] = useState(content);
   const [editing, setEditing] = useState(false);
+  const draftContentRef = useRef(content);
+  const latestContentRef = useRef(content);
+
+  useEffect(() => {
+    latestContentRef.current = content;
+    if (!editing) {
+      draftContentRef.current = content;
+      setDraftContent(content);
+    }
+  }, [content, editing]);
+
+  const fitContentHeight = useCallback((element = editorRef.current) => {
+    fitTextareaHeightPreservingCaret(element, viewMode === 'expanded');
+  }, [viewMode]);
+
+  const commitContent = useCallback(() => {
+    const nextContent = draftContentRef.current;
+    if (nextContent !== latestContentRef.current) updateNode(id, { content: nextContent });
+  }, [id, updateNode]);
 
   useLayoutEffect(() => {
-    if (!editorRef.current) return;
-    if (viewMode === 'expanded') {
-      editorRef.current.style.height = 'auto';
-      editorRef.current.style.height = `${editorRef.current.scrollHeight}px`;
-    } else {
-      editorRef.current.style.height = '';
-    }
-  }, [data.content, viewMode, editing]);
+    fitContentHeight();
+  }, [draftContent, editing, fitContentHeight]);
+
+  useEffect(() => {
+    if (!editing) return undefined;
+    const timer = window.setTimeout(commitContent, 250);
+    return () => window.clearTimeout(timer);
+  }, [commitContent, draftContent, editing]);
 
   const beginEditing = (event) => {
     event.stopPropagation();
@@ -792,20 +852,27 @@ const TextNode = memo(({ id, data, selected }) => {
           <textarea
             ref={editorRef}
             className="text-editor is-editing nodrag nowheel"
-            value={data.content}
+            value={draftContent}
             placeholder={t('Enter your contentâ€¦', 'Nháº­p ná»™i dung cá»§a báº¡n...')}
-            onChange={(event) => updateNode(id, { content: event.target.value })}
+            onChange={(event) => {
+              draftContentRef.current = event.target.value;
+              setDraftContent(event.target.value);
+              fitContentHeight(event.currentTarget);
+            }}
             onDoubleClick={(event) => event.stopPropagation()}
-            onBlur={() => setEditing(false)}
+            onBlur={() => {
+              commitContent();
+              setEditing(false);
+            }}
           />
         ) : (
           <div ref={editorRef} className="text-editor text-display nowheel" onDoubleClick={beginEditing}>
-            {data.content || <span className="text-placeholder">{t('Double-click to enter contentâ€¦', 'Double-click Ä‘á»ƒ nháº­p ná»™i dung...')}</span>}
+            {content || <span className="text-placeholder">{t('Double-click to enter contentâ€¦', 'Double-click Ä‘á»ƒ nháº­p ná»™i dung...')}</span>}
           </div>
         )}
       </div>
-      <span className="node-external-meta">{data.content.length} {t('characters', 'kÃ½ tá»±')}</span>
-      <div className="node-border-copy"><CopyButton value={data.content} /></div>
+      <span className="node-external-meta">{(editing ? draftContent : content).length} {t('characters', 'kÃ½ tá»±')}</span>
+      <div className="node-border-copy"><CopyButton value={editing ? draftContent : content} /></div>
       <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
     </NodeShell>
   );
@@ -820,6 +887,10 @@ const CarouselNode = memo(({ id, data, selected }) => {
   const color = data.color || '#06b6d4';
   const images = Array.isArray(data.images) ? data.images : [];
   const content = data.content || '';
+  const [draftContent, setDraftContent] = useState(content);
+  const draftContentRef = useRef(content);
+  const latestContentRef = useRef(content);
+  const focusedContentRef = useRef(false);
   const uploadCardImage = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -835,6 +906,25 @@ const CarouselNode = memo(({ id, data, selected }) => {
   useEffect(() => {
     if (activeIndex >= images.length) setActiveIndex(0);
   }, [activeIndex, images.length]);
+  useEffect(() => {
+    latestContentRef.current = content;
+    if (!focusedContentRef.current) {
+      draftContentRef.current = content;
+      setDraftContent(content);
+    }
+  }, [content]);
+  const fitContentHeight = useCallback((element = editorRef.current) => {
+    fitTextareaHeightPreservingCaret(element, viewMode === 'expanded');
+  }, [viewMode]);
+  const commitContent = useCallback(() => {
+    const nextContent = draftContentRef.current;
+    if (nextContent !== latestContentRef.current) updateNode(id, { content: nextContent });
+  }, [id, updateNode]);
+  useEffect(() => {
+    if (!focusedContentRef.current) return undefined;
+    const timer = window.setTimeout(commitContent, 250);
+    return () => window.clearTimeout(timer);
+  }, [commitContent, draftContent]);
   const showcaseSlots = [-1, 0, 1, 2];
   const showcaseCards = showcaseSlots.map((offset) => {
     const position = offset === 0 ? 'center' : offset === -1 ? 'left' : offset === 1 ? 'right' : 'back';
@@ -844,15 +934,8 @@ const CarouselNode = memo(({ id, data, selected }) => {
     return { ...images[index], position };
   });
   useLayoutEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    if (viewMode === 'expanded') {
-      editor.style.height = 'auto';
-      editor.style.height = `${editor.scrollHeight}px`;
-    } else {
-      editor.style.height = '';
-    }
-  }, [content, viewMode]);
+    fitContentHeight();
+  }, [draftContent, fitContentHeight]);
   return (
     <NodeShell selected={selected} color={color} nodeId={id} note={data.note} className={`carousel-card mode-${viewMode}`}>
       <NodeHeader
@@ -882,13 +965,22 @@ const CarouselNode = memo(({ id, data, selected }) => {
         <textarea
           ref={editorRef}
           className="carousel-text-editor nodrag nowheel"
-          value={content}
+          value={draftContent}
           placeholder={'{\n  "prompt": "Write JSON text here"\n}'}
-          onChange={(event) => updateNode(id, { content: event.target.value })}
+          onFocus={() => { focusedContentRef.current = true; }}
+          onChange={(event) => {
+            draftContentRef.current = event.target.value;
+            setDraftContent(event.target.value);
+            fitContentHeight(event.currentTarget);
+          }}
+          onBlur={() => {
+            focusedContentRef.current = false;
+            commitContent();
+          }}
         />
       </div>
-      <span className="node-external-meta">{content.length} {t('characters')}</span>
-      <div className="node-border-copy"><CopyButton value={content} /></div>
+      <span className="node-external-meta">{draftContent.length} {t('characters')}</span>
+      <div className="node-border-copy"><CopyButton value={draftContent} /></div>
       <PortStack ports={data.outputPorts} type="source" position={Position.Right} color={color} />
     </NodeShell>
   );
@@ -1193,14 +1285,7 @@ const MixerNode = memo(({ id, data, selected }) => {
     };
   }, [segmentMenu]);
   const fitSegmentEditor = useCallback((element = segmentEditorRef.current) => {
-    if (!element) return;
-    const selectionStart = element.selectionStart;
-    const selectionEnd = element.selectionEnd;
-    element.style.height = 'auto';
-    element.style.height = `${element.scrollHeight}px`;
-    if (document.activeElement === element && Number.isFinite(selectionStart) && Number.isFinite(selectionEnd)) {
-      element.setSelectionRange(selectionStart, selectionEnd);
-    }
+    fitTextareaHeightPreservingCaret(element, true);
   }, []);
   useLayoutEffect(() => {
     if (!editingSegmentId) return;
@@ -1339,6 +1424,9 @@ const ExampleNode = memo(({ id, data, selected }) => {
   const inputTitleListText = inputTitles.map((item) => item.title || t('Untitled node', 'Node chÆ°a Ä‘áº·t tÃªn')).join('\n');
   const color = data.color || '#10b981';
   const exampleText = data.content || '';
+  const [draftExampleText, setDraftExampleText] = useState(exampleText);
+  const draftExampleTextRef = useRef(exampleText);
+  const latestExampleTextRef = useRef(exampleText);
   const exampleMode = data.exampleMode || (data.image ? 'image' : exampleText ? 'text' : '');
   const onFile = async (event) => {
     const file = event.target.files?.[0];
@@ -1351,14 +1439,31 @@ const ExampleNode = memo(({ id, data, selected }) => {
     }
     finally { setUploading(false); event.target.value = ''; }
   };
+  useEffect(() => {
+    latestExampleTextRef.current = exampleText;
+    if (!editingText) {
+      draftExampleTextRef.current = exampleText;
+      setDraftExampleText(exampleText);
+    }
+  }, [editingText, exampleText]);
+  const fitExampleTextHeight = useCallback((element = textEditorRef.current) => {
+    fitTextareaHeightPreservingCaret(element, viewMode === 'expanded');
+  }, [viewMode]);
+  const commitExampleText = useCallback(() => {
+    const nextText = draftExampleTextRef.current;
+    if (nextText !== latestExampleTextRef.current) updateNode(id, { content: nextText });
+  }, [id, updateNode]);
   useLayoutEffect(() => {
-    if (!textEditorRef.current || viewMode !== 'expanded') return;
-    textEditorRef.current.style.height = 'auto';
-    textEditorRef.current.style.height = `${textEditorRef.current.scrollHeight}px`;
-  }, [editingText, exampleText, viewMode]);
+    fitExampleTextHeight();
+  }, [draftExampleText, editingText, fitExampleTextHeight]);
+  useEffect(() => {
+    if (!editingText) return undefined;
+    const timer = window.setTimeout(commitExampleText, 250);
+    return () => window.clearTimeout(timer);
+  }, [commitExampleText, draftExampleText, editingText]);
   useLayoutEffect(() => {
     requestAnimationFrame(() => updateNodeInternals(id));
-  }, [id, inputTitles.length, inputTitleListText, exampleMode, exampleText, data.image, viewMode, updateNodeInternals]);
+  }, [id, inputTitles.length, inputTitleListText, exampleMode, draftExampleText, data.image, viewMode, updateNodeInternals]);
   const beginTextEditing = (event) => {
     event?.stopPropagation();
     if (!exampleMode) updateNode(id, { exampleMode: 'text', image: '', assetFile: '', fileName: '', imageWidth: 0, imageHeight: 0 });
@@ -1398,16 +1503,23 @@ const ExampleNode = memo(({ id, data, selected }) => {
               <textarea
                 ref={textEditorRef}
                 className="example-text-editor nodrag nowheel"
-                value={exampleText}
+                value={draftExampleText}
                 placeholder={t('Write an example…')}
-                onChange={(event) => updateNode(id, { content: event.target.value })}
-                onBlur={() => setEditingText(false)}
+                onChange={(event) => {
+                  draftExampleTextRef.current = event.target.value;
+                  setDraftExampleText(event.target.value);
+                  fitExampleTextHeight(event.currentTarget);
+                }}
+                onBlur={() => {
+                  commitExampleText();
+                  setEditingText(false);
+                }}
                 autoFocus
               />
             ) : (
               <div ref={textEditorRef} className={`example-text-display ${exampleText ? '' : 'is-empty'}`} onDoubleClick={beginTextEditing}>{exampleText || t('Double-click to write example text…')}</div>
             )}
-            {exampleText && <div className="example-resource-copy"><CopyButton value={exampleText} /></div>}
+            {(editingText ? draftExampleText : exampleText) && <div className="example-resource-copy"><CopyButton value={editingText ? draftExampleText : exampleText} /></div>}
           </div>
         )}
         {!exampleMode && <div className="example-content-empty">{t('Choose this Example node type once. The selected type will remain fixed.')}</div>}
@@ -3442,6 +3554,37 @@ function FlowCanvas() {
     showToast(t('Text Node converted to Carousel Node'));
   }, [joinMenu, showToast, t]);
 
+  const convertExampleToGen = useCallback(() => {
+    if (!joinMenu?.nodeId || joinMenu.nodeType !== 'exampleNode') return;
+    setNodes((current) => current.map((node) => {
+      if (node.id !== joinMenu.nodeId) return node;
+      const exampleMode = node.data?.exampleMode || (node.data?.image ? 'image' : node.data?.content?.trim() ? 'text' : '');
+      return {
+        ...node,
+        type: 'genNode',
+        data: {
+          ...node.data,
+          title: node.data?.title || t('Gen Node'),
+          viewMode: node.data?.viewMode || 'expanded',
+          color: node.data?.color || '#a855f7',
+          imageOrientation: node.data?.imageOrientation || 'landscape',
+          imageProvider: node.data?.imageProvider || 'shopaikey',
+          image: exampleMode === 'image' ? (node.data?.image || '') : '',
+          assetFile: exampleMode === 'image' ? (node.data?.assetFile || '') : '',
+          fileName: exampleMode === 'image' ? (node.data?.fileName || '') : '',
+          imageWidth: exampleMode === 'image' ? (node.data?.imageWidth || 0) : 0,
+          imageHeight: exampleMode === 'image' ? (node.data?.imageHeight || 0) : 0,
+          generationError: '',
+          isGenerating: false,
+        },
+        selected: true,
+      };
+    }));
+    routeCacheRef.current.clear();
+    setJoinMenu(null);
+    showToast(t('Example Node converted to Gen Node', 'Đã chuyển Example Node thành Gen Node'));
+  }, [joinMenu, showToast, t]);
+
   const makeCanvasImageNode = useCallback((targetType = 'imageNode') => {
     const targetIds = canvasImageMenu?.nodeIds?.length
       ? canvasImageMenu.nodeIds
@@ -4134,6 +4277,8 @@ function FlowCanvas() {
                 <button role="menuitem" onClick={convertMixerToJoin}><span className="menu-icon violet"><Waypoints size={15} /></span><span>{t('Convert to Join Point')}</span><ArrowRight size={13} /></button>
               ) : joinMenu.nodeType === 'textNode' ? (
                 <button role="menuitem" onClick={convertTextToCarousel}><span className="menu-icon blue"><FileImage size={15} /></span><span>{t('Convert to Carousel Node')}</span><ArrowRight size={13} /></button>
+              ) : joinMenu.nodeType === 'exampleNode' ? (
+                <button role="menuitem" onClick={convertExampleToGen}><span className="menu-icon violet"><Zap size={15} /></span><span>{t('Convert to Gen Node', 'Chuyển thành Gen Node')}</span><ArrowRight size={13} /></button>
               ) : joinMenu.nodeType === 'joinNode' ? (
                 <>
                   <button role="menuitem" onClick={enableJoinMove}><span className="menu-icon violet"><MousePointer2 size={15} /></span><span>{t('Move Join Point')}</span><ArrowRight size={13} /></button>
