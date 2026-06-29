@@ -1964,7 +1964,7 @@ const BeamEdge = memo(({
 
 const edgeTypes = { beam: BeamEdge };
 
-function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRename, onDelete, onReorder }) {
+function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onDuplicate, onRename, onDelete, onReorder }) {
   const t = useTranslation();
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -2051,11 +2051,12 @@ function ProjectManager({ projects, activeProjectId, onSelect, onCreate, onRenam
         <input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder={t('New project name', 'TÃªn project má»›i')} aria-label={t('New project name', 'TÃªn project má»›i')} />
         <button type="submit" disabled={!newName.trim()} aria-label={t('Create project', 'Táº¡o project')}><FolderPlus size={14} /></button>
       </form>
+      <button className="project-duplicate-button" onClick={onDuplicate} disabled={!active} aria-label={t('Duplicate current project', 'Nhân bản project hiện tại')}><Copy size={13} /><span>{t('Duplicate current project', 'Nhân bản project hiện tại')}</span></button>
     </div>
   );
 }
 
-function Sidebar({ collapsed, setCollapsed, addNode, resetProject, openSettings, projects, activeProjectId, onSelectProject, onCreateProject, onRenameProject, onDeleteProject, onReorderProjects }) {
+function Sidebar({ collapsed, setCollapsed, addNode, resetProject, openSettings, projects, activeProjectId, onSelectProject, onCreateProject, onDuplicateProject, onRenameProject, onDeleteProject, onReorderProjects }) {
   const t = useTranslation();
   const [confirmBaseTemplate, setConfirmBaseTemplate] = useState(false);
   return (
@@ -2068,7 +2069,7 @@ function Sidebar({ collapsed, setCollapsed, addNode, resetProject, openSettings,
         </button>
       </div>
 
-      {!collapsed && <ProjectManager projects={projects} activeProjectId={activeProjectId} onSelect={onSelectProject} onCreate={onCreateProject} onRename={onRenameProject} onDelete={onDeleteProject} onReorder={onReorderProjects} />}
+      {!collapsed && <ProjectManager projects={projects} activeProjectId={activeProjectId} onSelect={onSelectProject} onCreate={onCreateProject} onDuplicate={onDuplicateProject} onRename={onRenameProject} onDelete={onDeleteProject} onReorder={onReorderProjects} />}
 
       <nav className="node-menu">
         <button onClick={() => addNode('textNode')}><span className="menu-icon blue"><Type size={17} /></span>{!collapsed && <><span><strong>Text</strong><small>{t('Text content', 'Ná»™i dung vÄƒn báº£n')}</small></span><Plus size={15} /></>}</button>
@@ -3687,6 +3688,31 @@ function FlowCanvas() {
     } catch (error) { showToast(error.message || t('Could not create the project', 'KhÃ´ng thá»ƒ táº¡o project'), 'error'); }
   }, [activeProjectId, storageReady, nodes, edges, loadProjectById, showToast, t]);
 
+  const duplicateProject = useCallback(async () => {
+    try {
+      if (!activeProjectId) throw new Error(t('No project selected', 'Chưa chọn project'));
+      const current = projectsRef.current.find((item) => item.id === activeProjectId);
+      if (!current) throw new Error(t('Project not found', 'Không tìm thấy project'));
+      if (storageReady) {
+        const saved = await fileStorage.saveProject(current, nodes, edges);
+        updateProjects((projectsList) => projectsList.map((item) => item.id === activeProjectId ? { ...item, ...saved } : item));
+      }
+      const latestProjects = projectsRef.current;
+      const source = latestProjects.find((item) => item.id === activeProjectId) || current;
+      const duplicated = await fileStorage.duplicateProject(source, latestProjects);
+      const sourceIndex = latestProjects.findIndex((item) => item.id === activeProjectId);
+      const insertIndex = sourceIndex >= 0 ? sourceIndex + 1 : latestProjects.length;
+      const nextProjects = [...latestProjects.slice(0, insertIndex), duplicated, ...latestProjects.slice(insertIndex)];
+      projectsRef.current = nextProjects;
+      setProjects(nextProjects);
+      await fileStorage.saveProjectOrder(nextProjects.map((item) => item.id));
+      await loadProjectById(duplicated.id);
+      showToast(t(`Project “${duplicated.name}” duplicated`, `Đã nhân bản project “${duplicated.name}”`));
+    } catch (error) {
+      showToast(error.message || t('Could not duplicate the project', 'Không thể nhân bản project'), 'error');
+    }
+  }, [activeProjectId, storageReady, nodes, edges, loadProjectById, showToast, t, updateProjects]);
+
   const renameProject = useCallback(async (projectId, name) => {
     try {
       const project = projectsRef.current.find((item) => item.id === projectId);
@@ -4007,7 +4033,7 @@ function FlowCanvas() {
     <NodeActionsContext.Provider value={actions}>
       <EdgeActionsContext.Provider value={edgeActions}>
       <main className={`app-shell theme-${theme}`} style={connectorStyle}>
-        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} addNode={addNode} resetProject={resetProject} openSettings={openSettingsPanel} projects={projects} activeProjectId={activeProjectId} onSelectProject={selectProject} onCreateProject={createProject} onRenameProject={renameProject} onDeleteProject={deleteProject} onReorderProjects={reorderProjects} />
+        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} addNode={addNode} resetProject={resetProject} openSettings={openSettingsPanel} projects={projects} activeProjectId={activeProjectId} onSelectProject={selectProject} onCreateProject={createProject} onDuplicateProject={duplicateProject} onRenameProject={renameProject} onDeleteProject={deleteProject} onReorderProjects={reorderProjects} />
         <section
           className="canvas-area"
           ref={canvasRef}

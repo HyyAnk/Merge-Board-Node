@@ -251,6 +251,30 @@ export async function createProject(name, projects) {
   return project;
 }
 
+export async function duplicateProject(project, projects) {
+  if (!project?.folder) throw new Error('Project is not available');
+  const now = new Date().toISOString();
+  const source = await getProjectDirectory(project.folder);
+  const duplicated = {
+    id: crypto.randomUUID(),
+    name: `${cleanProjectName(project.name)} Copy`,
+    folder: await uniqueFolderOnDisk(`${project.name} Copy`, projects),
+    createdAt: now,
+    updatedAt: now,
+    nodeCount: project.nodeCount || 0,
+    edgeCount: project.edgeCount || 0,
+  };
+  const destination = await getProjectDirectory(duplicated.folder, true);
+  await copyDirectory(source, destination);
+  const data = await readJson(destination, 'project.json');
+  data.updatedAt = now;
+  data.projectMeta = { id: duplicated.id, name: duplicated.name, createdAt: duplicated.createdAt };
+  await writeJson(destination, 'project.json', data);
+  duplicated.nodeCount = Array.isArray(data.nodes) ? data.nodes.length : 0;
+  duplicated.edgeCount = Array.isArray(data.edges) ? data.edges.length : 0;
+  return duplicated;
+}
+
 export async function readProject(project) {
   clearObjectUrls();
   const directory = await getProjectDirectory(project.folder);
