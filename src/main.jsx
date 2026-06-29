@@ -20,7 +20,6 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   ViewportPortal,
-  getSmoothStepPath,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -1750,224 +1749,22 @@ const SectionNode = memo(({ id, data, selected }) => {
 
 const nodeTypes = { textNode: TextNode, carouselNode: CarouselNode, imageNode: ImageNode, mixerNode: MixerNode, exampleNode: ExampleNode, genNode: GenNode, canvasImageNode: CanvasImageNode, joinNode: JoinNode, sectionNode: SectionNode };
 
-function routeAroundNodes(start, end, obstacles) {
-  const xs = [...new Set([start.x, end.x, ...obstacles.flatMap((rect) => [rect.left, rect.right])])].sort((a, b) => a - b);
-  const ys = [...new Set([start.y, end.y, ...obstacles.flatMap((rect) => [rect.top, rect.bottom])])].sort((a, b) => a - b);
-  const isInside = (point) => obstacles.some((rect) => point.x > rect.left && point.x < rect.right && point.y > rect.top && point.y < rect.bottom);
-  const isBlocked = (a, b) => obstacles.some((rect) => {
-    if (a.y === b.y) {
-      const minX = Math.min(a.x, b.x); const maxX = Math.max(a.x, b.x);
-      return a.y > rect.top && a.y < rect.bottom && maxX > rect.left && minX < rect.right;
-    }
-    const minY = Math.min(a.y, b.y); const maxY = Math.max(a.y, b.y);
-    return a.x > rect.left && a.x < rect.right && maxY > rect.top && minY < rect.bottom;
-  });
-  const points = [];
-  const pointIndex = new Map();
-  ys.forEach((y) => xs.forEach((x) => {
-    const point = { x, y };
-    if ((x === start.x && y === start.y) || (x === end.x && y === end.y) || !isInside(point)) {
-      pointIndex.set(`${x}|${y}`, points.length);
-      points.push(point);
-    }
-  }));
-  const adjacency = Array.from({ length: points.length }, () => []);
-  const connectLine = (indices, axis) => {
-    indices.sort((a, b) => points[a][axis] - points[b][axis]);
-    for (let index = 0; index < indices.length - 1; index += 1) {
-      const from = indices[index]; const to = indices[index + 1];
-      if (isBlocked(points[from], points[to])) continue;
-      const distance = Math.abs(points[from].x - points[to].x) + Math.abs(points[from].y - points[to].y);
-      const direction = points[from].x === points[to].x ? 'v' : 'h';
-      adjacency[from].push({ to, distance, direction });
-      adjacency[to].push({ to: from, distance, direction });
-    }
-  };
-  ys.forEach((y) => connectLine(points.map((point, index) => point.y === y ? index : -1).filter((index) => index >= 0), 'x'));
-  xs.forEach((x) => connectLine(points.map((point, index) => point.x === x ? index : -1).filter((index) => index >= 0), 'y'));
-  const startIndex = pointIndex.get(`${start.x}|${start.y}`);
-  const endIndex = pointIndex.get(`${end.x}|${end.y}`);
-  if (startIndex == null || endIndex == null) return [start, end];
-  const queue = [];
-  const distances = new Map();
-  const previous = new Map();
-  const push = (item) => {
-    queue.push(item);
-    let child = queue.length - 1;
-    while (child > 0) {
-      const parent = Math.floor((child - 1) / 2);
-      if (queue[parent].cost <= queue[child].cost) break;
-      [queue[parent], queue[child]] = [queue[child], queue[parent]];
-      child = parent;
-    }
-  };
-  const pop = () => {
-    const first = queue[0]; const last = queue.pop();
-    if (queue.length && last) {
-      queue[0] = last;
-      let parent = 0;
-      while (true) {
-        const left = parent * 2 + 1; const right = left + 1;
-        let smallest = parent;
-        if (left < queue.length && queue[left].cost < queue[smallest].cost) smallest = left;
-        if (right < queue.length && queue[right].cost < queue[smallest].cost) smallest = right;
-        if (smallest === parent) break;
-        [queue[parent], queue[smallest]] = [queue[smallest], queue[parent]];
-        parent = smallest;
-      }
-    }
-    return first;
-  };
-  ['h', 'v'].forEach((direction) => {
-    const key = `${startIndex}:${direction}`;
-    distances.set(key, 0); push({ node: startIndex, direction, cost: 0, key });
-  });
-  let finalKey = null;
-  while (queue.length) {
-    const current = pop();
-    if (current.cost !== distances.get(current.key)) continue;
-    if (current.node === endIndex) { finalKey = current.key; break; }
-    adjacency[current.node].forEach((edge) => {
-      const bendPenalty = edge.direction === current.direction ? 0 : 12;
-      const nextCost = current.cost + edge.distance + bendPenalty;
-      const nextKey = `${edge.to}:${edge.direction}`;
-      if (nextCost >= (distances.get(nextKey) ?? Infinity)) return;
-      distances.set(nextKey, nextCost);
-      previous.set(nextKey, current.key);
-      push({ node: edge.to, direction: edge.direction, cost: nextCost, key: nextKey });
-    });
-  }
-  if (!finalKey) return null;
-  const route = [];
-  let cursor = finalKey;
-  while (cursor) {
-    route.push(points[Number(cursor.split(':')[0])]);
-    cursor = previous.get(cursor);
-  }
-  route.reverse();
-  return route.filter((point, index, all) => {
-    if (!index || index === all.length - 1) return true;
-    const before = all[index - 1]; const after = all[index + 1];
-    return !((before.x === point.x && point.x === after.x) || (before.y === point.y && point.y === after.y));
-  });
-}
-
-function roundedRoutePath(points, radius = 14) {
-  if (points.length < 2) return '';
-  let path = `M ${points[0].x} ${points[0].y}`;
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const previous = points[index - 1]; const current = points[index]; const next = points[index + 1];
-    const incoming = Math.abs(current.x - previous.x) + Math.abs(current.y - previous.y);
-    const outgoing = Math.abs(next.x - current.x) + Math.abs(next.y - current.y);
-    const cornerRadius = Math.min(radius, incoming / 2, outgoing / 2);
-    const before = {
-      x: current.x + Math.sign(previous.x - current.x) * cornerRadius,
-      y: current.y + Math.sign(previous.y - current.y) * cornerRadius,
-    };
-    const after = {
-      x: current.x + Math.sign(next.x - current.x) * cornerRadius,
-      y: current.y + Math.sign(next.y - current.y) * cornerRadius,
-    };
-    path += ` L ${before.x} ${before.y} Q ${current.x} ${current.y} ${after.x} ${after.y}`;
-  }
-  const last = points[points.length - 1];
-  return `${path} L ${last.x} ${last.y}`;
-}
-
-function routeMidpoint(points) {
-  const lengths = points.slice(1).map((point, index) => Math.abs(point.x - points[index].x) + Math.abs(point.y - points[index].y));
-  const target = lengths.reduce((sum, length) => sum + length, 0) / 2;
-  let travelled = 0;
-  for (let index = 0; index < lengths.length; index += 1) {
-    if (travelled + lengths[index] >= target) {
-      const ratio = lengths[index] ? (target - travelled) / lengths[index] : 0;
-      return { x: points[index].x + (points[index + 1].x - points[index].x) * ratio, y: points[index].y + (points[index + 1].y - points[index].y) * ratio };
-    }
-    travelled += lengths[index];
-  }
-  return points[Math.floor(points.length / 2)];
-}
-
-function makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, sourceLead = 28, targetLead = 28, sourceDirection = 1, targetDirection = -1) {
-  const sourceStub = { x: sourcePoint.x + sourceLead * sourceDirection, y: sourcePoint.y };
-  const targetStub = { x: targetPoint.x + targetLead * targetDirection, y: targetPoint.y };
-  const middleRoute = routeAroundNodes(sourceStub, targetStub, obstacles);
-  if (!middleRoute) return null;
-  return [sourcePoint, sourceStub, ...middleRoute.slice(1, -1), targetStub, targetPoint]
-    .filter((point, index, all) => !index || point.x !== all[index - 1].x || point.y !== all[index - 1].y)
-    .filter((point, index, all) => {
-      if (!index || index === all.length - 1) return true;
-      const before = all[index - 1]; const after = all[index + 1];
-      return !((before.x === point.x && point.x === after.x) || (before.y === point.y && point.y === after.y));
-    });
-}
-
-function routeSegmentsAsObstacles(points, padding = 16) {
-  return points.slice(1).map((point, index) => {
-    const previous = points[index];
-    return {
-      left: Math.min(previous.x, point.x) - padding,
-      right: Math.max(previous.x, point.x) + padding,
-      top: Math.min(previous.y, point.y) - padding,
-      bottom: Math.max(previous.y, point.y) + padding,
-    };
-  });
-}
-
-function createSpatialObstacleIndex(obstacles = [], cellSize = 320) {
-  const grid = new Map();
-  const index = { cellSize, grid, obstacles: [] };
-  obstacles.forEach((obstacle) => addSpatialObstacle(index, obstacle));
-  return index;
-}
-
-function addSpatialObstacle(index, obstacle) {
-  const obstacleIndex = index.obstacles.length;
-  index.obstacles.push(obstacle);
-  const minColumn = Math.floor(obstacle.left / index.cellSize);
-  const maxColumn = Math.floor(obstacle.right / index.cellSize);
-  const minRow = Math.floor(obstacle.top / index.cellSize);
-  const maxRow = Math.floor(obstacle.bottom / index.cellSize);
-  for (let column = minColumn; column <= maxColumn; column += 1) {
-    for (let row = minRow; row <= maxRow; row += 1) {
-      const key = `${column}|${row}`;
-      if (!index.grid.has(key)) index.grid.set(key, []);
-      index.grid.get(key).push(obstacleIndex);
-    }
-  }
-}
-
-function querySpatialObstacles(index, bounds) {
-  const minColumn = Math.floor(bounds.left / index.cellSize);
-  const maxColumn = Math.floor(bounds.right / index.cellSize);
-  const minRow = Math.floor(bounds.top / index.cellSize);
-  const maxRow = Math.floor(bounds.bottom / index.cellSize);
-  const cellCount = (maxColumn - minColumn + 1) * (maxRow - minRow + 1);
-  if (cellCount > Math.max(64, index.grid.size * 2)) {
-    return index.obstacles.filter((obstacle) => obstacle.right >= bounds.left && obstacle.left <= bounds.right && obstacle.bottom >= bounds.top && obstacle.top <= bounds.bottom);
-  }
-  const candidates = new Set();
-  for (let column = minColumn; column <= maxColumn; column += 1) {
-    for (let row = minRow; row <= maxRow; row += 1) {
-      (index.grid.get(`${column}|${row}`) || []).forEach((obstacleIndex) => candidates.add(obstacleIndex));
-    }
-  }
-  return [...candidates]
-    .map((obstacleIndex) => index.obstacles[obstacleIndex])
-    .filter((obstacle) => obstacle.right >= bounds.left && obstacle.left <= bounds.right && obstacle.bottom >= bounds.top && obstacle.top <= bounds.bottom);
-}
-
-function routingSearchBounds(start, end, margin = 280) {
+function cubicPointAt(start, controlA, controlB, end, tValue) {
+  const inverse = 1 - tValue;
   return {
-    left: Math.min(start.x, end.x) - margin,
-    right: Math.max(start.x, end.x) + margin,
-    top: Math.min(start.y, end.y) - margin,
-    bottom: Math.max(start.y, end.y) + margin,
+    x: inverse ** 3 * start.x + 3 * inverse ** 2 * tValue * controlA.x + 3 * inverse * tValue ** 2 * controlB.x + tValue ** 3 * end.x,
+    y: inverse ** 3 * start.y + 3 * inverse ** 2 * tValue * controlA.y + 3 * inverse * tValue ** 2 * controlB.y + tValue ** 3 * end.y,
   };
 }
 
-function obstacleRoutingSignature(obstacles) {
-  return obstacles.map((obstacle) => `${obstacle.id || ''}:${Math.round(obstacle.left)},${Math.round(obstacle.top)},${Math.round(obstacle.right)},${Math.round(obstacle.bottom)}`).join(';');
+function softConnectorPath(sourcePoint, targetPoint, sourceDirection = 1, targetDirection = -1) {
+  const distanceX = Math.abs(targetPoint.x - sourcePoint.x);
+  const distanceY = Math.abs(targetPoint.y - sourcePoint.y);
+  const controlDistance = Math.max(72, Math.min(360, distanceX * 0.5 + distanceY * 0.18));
+  const controlA = { x: sourcePoint.x + controlDistance * sourceDirection, y: sourcePoint.y };
+  const controlB = { x: targetPoint.x + controlDistance * targetDirection, y: targetPoint.y };
+  const midpoint = cubicPointAt(sourcePoint, controlA, controlB, targetPoint, 0.5);
+  return [`M ${sourcePoint.x} ${sourcePoint.y} C ${controlA.x} ${controlA.y} ${controlB.x} ${controlB.y} ${targetPoint.x} ${targetPoint.y}`, midpoint.x, midpoint.y];
 }
 
 function offsetPointOnEdgePath(pathElement, clickPoint, screenGap, zoom) {
@@ -2013,8 +1810,6 @@ const BeamEdge = memo(({
   sourceY,
   targetX,
   targetY,
-  sourcePosition,
-  targetPosition,
   selected,
   data,
 }) => {
@@ -2031,21 +1826,8 @@ const BeamEdge = memo(({
   const [edgePath, labelX, labelY] = useMemo(() => {
     const sourcePoint = data?.sourcePoint || { x: sourceX, y: sourceY };
     const targetPoint = data?.targetPoint || { x: targetX, y: targetY };
-    const obstacles = data?.routingObstacles || [];
-    const plannedRoute = data?.routingComputed
-      ? data?.routedPoints
-      : (data?.routedPoints || makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead, data?.sourceDirection, data?.targetDirection));
-    if (!plannedRoute) return getSmoothStepPath({ sourceX: sourcePoint.x, sourceY: sourcePoint.y, targetX: targetPoint.x, targetY: targetPoint.y, sourcePosition, targetPosition, borderRadius: 18 }).slice(0, 3);
-    let route = plannedRoute.map((point, index) => index === 0 ? sourcePoint : index === plannedRoute.length - 1 ? targetPoint : point);
-    const hasDiagonal = route.slice(1).some((point, index) => point.x !== route[index].x && point.y !== route[index].y);
-    if (hasDiagonal) {
-      const correctedRoute = makeOrthogonalRoute(sourcePoint, targetPoint, obstacles, data?.sourceLead, data?.targetLead, data?.sourceDirection, data?.targetDirection);
-      if (!correctedRoute) return getSmoothStepPath({ sourceX: sourcePoint.x, sourceY: sourcePoint.y, targetX: targetPoint.x, targetY: targetPoint.y, sourcePosition, targetPosition, borderRadius: 18 }).slice(0, 3);
-      route = correctedRoute;
-    }
-    const midpoint = routeMidpoint(route);
-    return [roundedRoutePath(route), midpoint.x, midpoint.y];
-  }, [data?.routedPoints, data?.routingKey, data?.sourcePoint, data?.targetPoint, source, sourcePosition, sourceX, sourceY, target, targetPosition, targetX, targetY]);
+    return softConnectorPath(sourcePoint, targetPoint, data?.sourceDirection ?? 1, data?.targetDirection ?? -1);
+  }, [data?.sourceDirection, data?.sourcePoint, data?.targetDirection, data?.targetPoint, sourceX, sourceY, targetX, targetY]);
   const cutX = data?.cutPoint?.x ?? labelX;
   const cutY = data?.cutPoint?.y ?? labelY;
 
@@ -2228,7 +2010,6 @@ function FlowCanvas() {
   const [edgeCutPoints, setEdgeCutPoints] = useState({});
   const [viewportZoom, setViewportZoom] = useState(1);
   const [toolMode, setToolMode] = useState('select');
-  const [routingDragNodeIds, setRoutingDragNodeIds] = useState([]);
   const [sectionDraft, setSectionDraft] = useState(null);
   const [projects, setProjects] = useState([]);
   const [activeProjectId, setActiveProjectId] = useState(null);
@@ -2251,7 +2032,6 @@ function FlowCanvas() {
   const activeGenerationRequestsRef = useRef(new Map());
   const duplicateDeltaRef = useRef({ x: 42, y: 42 });
   const pendingDuplicateRef = useRef(null);
-  const routeCacheRef = useRef(new Map());
   const { screenToFlowPosition, fitView, getNode, setCenter, getViewport, setViewport } = useReactFlow();
   const renderedNodeLayout = useStore(selectRenderedNodeLayout, sameRenderedNodeLayout);
 
@@ -3298,14 +3078,8 @@ function FlowCanvas() {
     };
   }, [movableJoinId, nodes]);
 
-  const beginNodeRoutingDrag = useCallback((_event, node) => {
-    const selectedIds = nodes.filter((item) => item.selected).map((item) => item.id);
-    setRoutingDragNodeIds(selectedIds.includes(node.id) ? selectedIds : [node.id]);
-  }, [nodes]);
-
-  const finishNodeRoutingDrag = useCallback((event, node, draggedNodes = []) => {
+  const finishNodeDrag = useCallback((event, node, draggedNodes = []) => {
     rememberDuplicateSpacing(event, node, draggedNodes);
-    setRoutingDragNodeIds([]);
   }, [rememberDuplicateSpacing]);
 
   useEffect(() => {
@@ -3493,7 +3267,6 @@ function FlowCanvas() {
       sourceHandle: edge.source === joinMenu.nodeId ? 'join-out' : edge.sourceHandle,
       targetHandle: edge.target === joinMenu.nodeId ? 'join-in' : edge.targetHandle,
     })));
-    routeCacheRef.current.clear();
     setJoinMenu(null);
     showToast(t('Mixer converted to Join Point'));
   }, [joinMenu, renderedNodeLayoutById, showToast, t]);
@@ -3528,7 +3301,6 @@ function FlowCanvas() {
       targetHandle: edge.target === joinMenu.nodeId ? `in-${edge.id}` : edge.targetHandle,
     })));
     setMovableJoinId((current) => current === joinMenu.nodeId ? null : current);
-    routeCacheRef.current.clear();
     setJoinMenu(null);
     showToast(t('Join Point converted to Mixer'));
   }, [joinMenu, renderedNodeLayoutById, showToast, t]);
@@ -3549,7 +3321,6 @@ function FlowCanvas() {
         selected: true,
       };
     }));
-    routeCacheRef.current.clear();
     setJoinMenu(null);
     showToast(t('Text Node converted to Carousel Node'));
   }, [joinMenu, showToast, t]);
@@ -3580,7 +3351,6 @@ function FlowCanvas() {
         selected: true,
       };
     }));
-    routeCacheRef.current.clear();
     setJoinMenu(null);
     showToast(t('Example Node converted to Gen Node', 'Đã chuyển Example Node thành Gen Node'));
   }, [joinMenu, showToast, t]);
@@ -3993,7 +3763,6 @@ function FlowCanvas() {
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const nodeTypeById = new Map(nodes.map((node) => [node.id, node.type]));
     const selectedNodeIds = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
-    const activelyDraggedNodeIds = new Set(routingDragNodeIds);
     const geometryFor = (nodeId) => {
       const node = nodeById.get(nodeId);
       if (!node) return null;
@@ -4068,67 +3837,22 @@ function FlowCanvas() {
     };
     const sourcePlacements = placementByEdge(sourceEdgesByNode, 'source');
     const targetPlacements = placementByEdge(targetEdgesByNode, 'target');
-    const routingObstacles = nodes
-      .filter((node) => node.type !== 'sectionNode' && !activelyDraggedNodeIds.has(node.id))
-      .map((node) => {
-        const renderedNode = renderedNodeLayoutById.get(node.id);
-        const fallbackPosition = node.position || { x: 0, y: 0 };
-        const position = { x: renderedNode?.x ?? fallbackPosition.x, y: renderedNode?.y ?? fallbackPosition.y };
-        const isJoin = node.type === 'joinNode';
-        const width = renderedNode?.width || node.measured?.width || node.width || (isJoin ? 54 : 292);
-        const height = renderedNode?.height || node.measured?.height || node.height || (isJoin ? 54 : 180);
-        const sidePadding = isJoin ? 20 : 18;
-        return {
-          id: node.id,
-          left: position.x - sidePadding,
-          right: position.x + width + sidePadding,
-          top: position.y - (isJoin ? 20 : 42),
-          bottom: position.y + height + (isJoin ? 20 : 18),
-        };
-      });
-    const nodeObstacleIndex = createSpatialObstacleIndex(routingObstacles);
-    const lineObstacleIndex = createSpatialObstacleIndex([], 240);
-    const routeCache = routeCacheRef.current;
-    const activeEdgeIds = new Set(edges.map((edge) => edge.id));
-    [...routeCache.keys()].forEach((edgeId) => { if (!activeEdgeIds.has(edgeId)) routeCache.delete(edgeId); });
     return edges.map((edge) => {
       const sourceGeometry = geometryFor(edge.source);
       const targetGeometry = geometryFor(edge.target);
-      let routedPoints = null;
-      let sourceLead = 28;
-      let targetLead = 28;
       let sourceDirection = 1;
       let targetDirection = -1;
-      let localRoutingObstacles = routingObstacles;
-      let routingKey = edge.id;
       let renderSourcePoint = null;
       let renderTargetPoint = null;
       if (sourceGeometry && targetGeometry) {
-        const sourcePlacement = sourcePlacements.get(edge.id) || { offset: 0, index: 0 };
-        const targetPlacement = targetPlacements.get(edge.id) || { offset: 0, index: 0 };
-        sourceLead = 28 + sourcePlacement.index * 24;
-        targetLead = 28 + targetPlacement.index * 24;
+        const sourcePlacement = sourcePlacements.get(edge.id) || { offset: 0 };
+        const targetPlacement = targetPlacements.get(edge.id) || { offset: 0 };
         const sourceJoinReversed = nodeTypeById.get(edge.source) === 'joinNode' && joinReversedById.get(edge.source);
         const targetJoinReversed = nodeTypeById.get(edge.target) === 'joinNode' && joinReversedById.get(edge.target);
         sourceDirection = sourceJoinReversed ? -1 : 1;
         targetDirection = targetJoinReversed ? 1 : -1;
-        const sourcePoint = { x: sourceJoinReversed ? sourceGeometry.x : sourceGeometry.x + sourceGeometry.width, y: sourceGeometry.y + sourceGeometry.height / 2 + sourcePlacement.offset };
-        const targetPoint = { x: targetJoinReversed ? targetGeometry.x + targetGeometry.width : targetGeometry.x, y: targetGeometry.y + targetGeometry.height / 2 + targetPlacement.offset };
-        renderSourcePoint = sourcePoint;
-        renderTargetPoint = targetPoint;
-        const nodeSearchBounds = routingSearchBounds(sourcePoint, targetPoint, 280);
-        const lineSearchBounds = routingSearchBounds(sourcePoint, targetPoint, 100);
-        localRoutingObstacles = querySpatialObstacles(nodeObstacleIndex, nodeSearchBounds);
-        const localLineObstacles = querySpatialObstacles(lineObstacleIndex, lineSearchBounds);
-        routingKey = `${Math.round(sourcePoint.x)},${Math.round(sourcePoint.y)}>${Math.round(targetPoint.x)},${Math.round(targetPoint.y)}|${sourceLead},${targetLead}|D:${sourceDirection},${targetDirection}|N:${obstacleRoutingSignature(localRoutingObstacles)}|L:${obstacleRoutingSignature(localLineObstacles)}`;
-        const cachedRoute = routeCache.get(edge.id);
-        if (cachedRoute?.key === routingKey) routedPoints = cachedRoute.points;
-        else {
-          routedPoints = makeOrthogonalRoute(sourcePoint, targetPoint, [...localRoutingObstacles, ...localLineObstacles], sourceLead, targetLead, sourceDirection, targetDirection)
-            || makeOrthogonalRoute(sourcePoint, targetPoint, localRoutingObstacles, sourceLead, targetLead, sourceDirection, targetDirection);
-          routeCache.set(edge.id, { key: routingKey, points: routedPoints });
-        }
-        if (routedPoints) routeSegmentsAsObstacles(routedPoints).forEach((obstacle, index) => addSpatialObstacle(lineObstacleIndex, { ...obstacle, id: `${edge.id}:${index}` }));
+        renderSourcePoint = { x: sourceJoinReversed ? sourceGeometry.x : sourceGeometry.x + sourceGeometry.width, y: sourceGeometry.y + sourceGeometry.height / 2 + sourcePlacement.offset };
+        renderTargetPoint = { x: targetJoinReversed ? targetGeometry.x + targetGeometry.width : targetGeometry.x, y: targetGeometry.y + targetGeometry.height / 2 + targetPlacement.offset };
       }
       return {
         ...edge,
@@ -4141,20 +3865,14 @@ function FlowCanvas() {
           targetColor: nodeById.get(edge.target)?.data?.color || NODE_COLORS[0],
           relatedHighlighted: relatedEdgeIds.has(edge.id),
           cutPoint: edgeCutPoints[edge.id],
-          routingObstacles: localRoutingObstacles,
-          routedPoints,
-          routingKey,
-          routingComputed: Boolean(sourceGeometry && targetGeometry),
           sourcePoint: renderSourcePoint,
           targetPoint: renderTargetPoint,
-          sourceLead,
-          targetLead,
           sourceDirection,
           targetDirection,
         },
       };
     });
-  }, [nodes, edges, edgeCutPoints, renderedNodeLayoutById, routingDragNodeIds, joinReversedById]);
+  }, [nodes, edges, edgeCutPoints, renderedNodeLayoutById, joinReversedById]);
   const fullZoomCompensation = Math.max(1, 1 / viewportZoom);
   const connectorScale = Math.min(6.7, 1 + (fullZoomCompensation - 1) * 0.3);
   const connectorStyle = {
@@ -4214,8 +3932,7 @@ function FlowCanvas() {
             onEdgeClick={onEdgeClick}
             onEdgeContextMenu={openEdgeMenu}
             onNodeContextMenu={openJoinMenu}
-            onNodeDragStart={beginNodeRoutingDrag}
-            onNodeDragStop={finishNodeRoutingDrag}
+            onNodeDragStop={finishNodeDrag}
             onPaneClick={() => { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); }}
             onNodeClick={() => { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); }}
             onMoveStart={() => { setContextMenu(null); setEdgeMenu(null); setJoinMenu(null); setCanvasImageMenu(null); }}
@@ -4225,7 +3942,7 @@ function FlowCanvas() {
             minZoom={0.05}
             maxZoom={1.8}
             defaultEdgeOptions={{
-              type: 'smoothstep',
+              type: 'beam',
               style: { stroke: '#9c8ff1', strokeWidth: 2 },
             }}
             connectionLineStyle={{ stroke: '#7c67e8', strokeWidth: 2 }}
